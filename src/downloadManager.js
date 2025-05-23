@@ -465,7 +465,18 @@ class DownloadManager {
       '--force-overwrites',
       '--ignore-errors',
       '--no-abort-on-error',
-      '--socket-timeout', '30'
+      '--socket-timeout', '30',
+      '--retries', '3',
+      '--fragment-retries', '3',
+      // YouTube bot detection bypass
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      '--referer', 'https://www.youtube.com/',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      '--no-check-certificate',
+      '--prefer-insecure',
+      // Extra bypass options
+      '--extractor-args', 'youtube:player_client=android'
     ];
 
     // Output path
@@ -525,6 +536,9 @@ class DownloadManager {
         '--no-warnings',
         '--no-check-certificates',
         '--socket-timeout', '30',
+        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        '--referer', 'https://www.youtube.com/',
+        '--extractor-args', 'youtube:player_client=android',
         url
       ];
 
