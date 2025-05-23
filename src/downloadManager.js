@@ -468,15 +468,24 @@ class DownloadManager {
       '--socket-timeout', '30',
       '--retries', '3',
       '--fragment-retries', '3',
-      // YouTube bot detection bypass
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      // Advanced YouTube bot detection bypass
+      '--user-agent', 'Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
       '--referer', 'https://www.youtube.com/',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      '--add-header', 'Sec-Fetch-Mode:navigate',
+      '--add-header', 'Sec-Fetch-Site:same-origin',
+      '--add-header', 'Sec-Fetch-User:?1',
+      '--add-header', 'Cache-Control:max-age=0',
       '--no-check-certificate',
       '--prefer-insecure',
-      // Extra bypass options
-      '--extractor-args', 'youtube:player_client=android'
+      // Use mobile API which is less restricted
+      '--extractor-args', 'youtube:player_client=android,web',
+      // Add delay to seem more human-like
+      '--sleep-requests', '1',
+      '--sleep-subtitles', '1',
+      // Use different format selection to avoid bot detection
+      '--format-sort', 'res,ext:mp4:m4a'
     ];
 
     // Output path
@@ -487,26 +496,26 @@ class DownloadManager {
       args.push('--ffmpeg-location', ffmpegPath);
     }
 
-    // Format selection
+    // Format selection with bot bypass
     switch (format) {
       case 'video-only':
-        args.push('-f', 'bestvideo[ext=mp4]/bestvideo');
+        args.push('-f', 'best[height<=720][ext=mp4]/best[ext=mp4]/best');
         break;
       
       case 'audio-only':
-        args.push('-f', 'bestaudio[ext=m4a]/bestaudio');
+        args.push('-f', 'bestaudio[ext=m4a]/bestaudio/best');
         args.push('--extract-audio');
         args.push('--audio-format', 'mp3');
-        args.push('--audio-quality', '192K');
+        args.push('--audio-quality', '128K'); // Lower quality to reduce detection
         break;
       
       case 'video+audio':
       default:
         if (ffmpegPath) {
-          args.push('-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best');
+          args.push('-f', 'best[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best');
           args.push('--merge-output-format', 'mp4');
         } else {
-          args.push('-f', 'best[ext=mp4]/best');
+          args.push('-f', 'best[height<=720][ext=mp4]/best');
         }
         break;
     }
