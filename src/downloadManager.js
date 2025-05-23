@@ -1,6 +1,6 @@
 /**
- * Lemolex Video Downloader - Download Manager
- * Core download functionality for YouTube videos/audio
+ * Enhanced Lemolex Video Downloader - Download Manager
+ * Returns files directly and includes automatic cleanup
  * Author: Billy
  */
 
@@ -28,24 +28,89 @@ class DownloadManager {
     this.ytDlpPath = this.findYtDlpPath();
     this.initializeDownloadDirectory();
     
-    logSuccess('✅ DownloadManager initialized');
+    // Cleanup settings
+    this.cleanupMaxAge = 30 * 60 * 1000; // 30 minutes
+    this.maxTempFiles = 50; // Maximum temp files to keep
+    
+    logSuccess('✅ Enhanced DownloadManager initialized');
     logInfo(`Using yt-dlp path: ${this.ytDlpPath}`);
   }
 
   /**
-   * Initialize default download directory
+   * Initialize temporary download directory
    */
   initializeDownloadDirectory() {
-    const defaultPath = path.join(os.homedir(), 'Downloads', 'Lemolex');
-    if (!fs.existsSync(defaultPath)) {
+    const tempPath = path.join(os.tmpdir(), 'lemolex-downloads');
+    if (!fs.existsSync(tempPath)) {
       try {
-        fs.mkdirSync(defaultPath, { recursive: true });
-        logInfo(`Created default download directory: ${defaultPath}`);
+        fs.mkdirSync(tempPath, { recursive: true });
+        logInfo(`Created temporary download directory: ${tempPath}`);
       } catch (error) {
-        logError('Failed to create default download directory:', error.message);
+        logError('Failed to create temporary download directory:', error.message);
       }
     }
-    this.defaultDownloadPath = defaultPath;
+    this.tempDownloadPath = tempPath;
+  }
+
+  /**
+   * Clean up old temporary files
+   */
+  async cleanupTempFiles() {
+    try {
+      const files = fs.readdirSync(this.tempDownloadPath);
+      const now = Date.now();
+      let cleaned = 0;
+
+      // Sort files by modification time (oldest first)
+      const fileStats = files.map(file => {
+        const filePath = path.join(this.tempDownloadPath, file);
+        try {
+          const stats = fs.statSync(filePath);
+          return { file, filePath, mtime: stats.mtime.getTime(), size: stats.size };
+        } catch (error) {
+          return null;
+        }
+      }).filter(Boolean);
+
+      fileStats.sort((a, b) => a.mtime - b.mtime);
+
+      // Clean by age
+      for (const { file, filePath, mtime } of fileStats) {
+        if (now - mtime > this.cleanupMaxAge) {
+          try {
+            fs.unlinkSync(filePath);
+            logInfo(`🗑️ Cleaned old file: ${file}`);
+            cleaned++;
+          } catch (error) {
+            logWarning(`Failed to delete ${file}: ${error.message}`);
+          }
+        }
+      }
+
+      // Clean by count (keep only the most recent files)
+      const remainingFiles = fileStats.filter(({ filePath }) => fs.existsSync(filePath));
+      if (remainingFiles.length > this.maxTempFiles) {
+        const filesToDelete = remainingFiles.slice(0, remainingFiles.length - this.maxTempFiles);
+        for (const { file, filePath } of filesToDelete) {
+          try {
+            fs.unlinkSync(filePath);
+            logInfo(`🗑️ Cleaned excess file: ${file}`);
+            cleaned++;
+          } catch (error) {
+            logWarning(`Failed to delete excess file ${file}: ${error.message}`);
+          }
+        }
+      }
+
+      if (cleaned > 0) {
+        logSuccess(`✅ Cleaned up ${cleaned} temporary files`);
+      }
+
+      return cleaned;
+    } catch (error) {
+      logError('Cleanup error:', error.message);
+      return 0;
+    }
   }
 
   /**
@@ -81,31 +146,23 @@ class DownloadManager {
       'yt-dlp.exe'
     ];
 
-    logInfo('🔍 Checking paths:');
-    
     for (const ytdlpPath of possiblePaths) {
       try {
-        logInfo(`   Checking: ${ytdlpPath}`);
         if (fs.existsSync(ytdlpPath)) {
           const stats = fs.statSync(ytdlpPath);
           if (stats.size > 0) {
-            logSuccess(`✅ Found yt-dlp at: ${ytdlpPath} (${Math.round(stats.size / 1024 / 1024)}MB)`);
+            logSuccess(`✅ Found yt-dlp at: ${ytdlpPath}`);
             return ytdlpPath;
-          } else {
-            logWarning(`⚠️  File is empty, skipping`);
           }
-        } else {
-          logInfo(`   ❌ Not found`);
         }
       } catch (error) {
-        logWarning(`   ⚠️  Error checking: ${error.message}`);
         continue;
       }
     }
 
-    // Fallback to Python installation path
+    // Fallback
     const pythonPath = `C:\\Users\\${username}\\AppData\\Roaming\\Python\\Python313\\Scripts\\yt-dlp.exe`;
-    logWarning(`⚠️  Using fallback Python installation path: ${pythonPath}`);
+    logWarning(`⚠️  Using fallback path: ${pythonPath}`);
     return pythonPath;
   }
 
@@ -114,8 +171,6 @@ class DownloadManager {
    */
   async checkYtDlpAvailable() {
     return new Promise((resolve) => {
-      logInfo(`Testing yt-dlp at: ${this.ytDlpPath}`);
-      
       try {
         const process = spawn(this.ytDlpPath, ['--version'], {
           stdio: ['pipe', 'pipe', 'pipe'],
@@ -126,200 +181,43 @@ class DownloadManager {
         let hasOutput = false;
 
         process.stdout.on('data', (data) => {
-          const version = data.toString().trim();
-          logSuccess(`✅ yt-dlp version: ${version}`);
           hasOutput = true;
         });
 
-        process.stderr.on('data', (data) => {
-          logWarning(`yt-dlp stderr: ${data.toString()}`);
-        });
-
         process.on('close', (code) => {
-          logInfo(`yt-dlp process exited with code: ${code}`);
           resolve(code === 0 && hasOutput);
         });
 
-        process.on('error', (error) => {
-          logError(`yt-dlp error: ${error.message}`);
+        process.on('error', () => {
           resolve(false);
         });
 
-        // Timeout after 10 seconds
         setTimeout(() => {
-          try {
-            process.kill();
-          } catch (e) {}
-          logError('yt-dlp check timed out');
+          try { process.kill(); } catch (e) {}
           resolve(false);
         }, 10000);
       } catch (error) {
-        logError(`Failed to spawn yt-dlp: ${error.message}`);
         resolve(false);
       }
     });
   }
 
   /**
-   * Get video information without downloading
+   * Download and return file directly
    */
-  async getVideoInfo(url) {
-    logInfo(`Getting video info for: ${url}`);
-    
-    // Validate URL
-    if (!this.isValidYouTubeUrl(url)) {
-      throw new Error('Invalid YouTube URL provided');
-    }
+  async downloadAndReturnFile(options) {
+    // Clean up old files before starting new download
+    await this.cleanupTempFiles();
 
     // Check if yt-dlp is available
     const isAvailable = await this.checkYtDlpAvailable();
     if (!isAvailable) {
-      const errorMsg = `yt-dlp is not working at path: ${this.ytDlpPath}\n\nPlease ensure yt-dlp is installed:\n1. pip install yt-dlp\n2. Or download yt-dlp.exe to bin/ folder`;
-      logError(errorMsg);
-      throw new Error(errorMsg);
+      throw new Error('yt-dlp is not installed or not accessible');
     }
 
-    return new Promise((resolve, reject) => {
-      const args = [
-        '--dump-json',
-        '--no-warnings',
-        '--no-check-certificates',
-        '--socket-timeout', '30',
-        url
-      ];
-
-      logInfo(`Running command: "${this.ytDlpPath}" ${args.join(' ')}`);
-
-      try {
-        const process = spawn(this.ytDlpPath, args, {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true,
-          windowsHide: true
-        });
-
-        let stdout = '';
-        let stderr = '';
-
-        process.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
-
-        process.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
-
-        process.on('close', (code) => {
-          logInfo(`yt-dlp info process exited with code: ${code}`);
-          if (code === 0) {
-            try {
-              const info = JSON.parse(stdout);
-              logSuccess(`✅ Successfully got info for: ${info.title}`);
-              resolve({
-                id: info.id,
-                title: info.title,
-                duration: info.duration,
-                thumbnail: info.thumbnail,
-                uploader: info.uploader,
-                view_count: info.view_count,
-                upload_date: info.upload_date,
-                description: info.description?.substring(0, 500) + '...',
-                formats: this.parseFormats(info.formats || []),
-                webpage_url: info.webpage_url
-              });
-            } catch (error) {
-              logError('Failed to parse video information:', error);
-              logError('Raw output:', stdout);
-              reject(new Error('Failed to parse video information'));
-            }
-          } else {
-            logError('yt-dlp stderr:', stderr);
-            reject(new Error(stderr || 'Failed to get video information'));
-          }
-        });
-
-        process.on('error', (error) => {
-          logError('yt-dlp process error:', error);
-          if (error.code === 'ENOENT' || error.code === 'UNKNOWN') {
-            reject(new Error(`yt-dlp not found at: ${this.ytDlpPath}\n\nInstallation guide:\n1. pip install yt-dlp\n2. Restart terminal\n3. Or download yt-dlp.exe to bin/ folder`));
-          } else {
-            reject(new Error(`yt-dlp process error: ${error.message}`));
-          }
-        });
-
-        // Timeout after 60 seconds for info
-        setTimeout(() => {
-          try {
-            process.kill();
-          } catch (e) {}
-          reject(new Error('Video info request timed out'));
-        }, 60000);
-      } catch (error) {
-        reject(new Error(`Failed to spawn yt-dlp: ${error.message}`));
-      }
-    });
-  }
-
-  /**
-   * Validate YouTube URL
-   */
-  isValidYouTubeUrl(url) {
-    const patterns = [
-      /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)/,
-      /^https?:\/\/(www\.)?youtube\.com\/shorts\//,
-      /^https?:\/\/(www\.)?youtube\.com\/playlist\?list=/
-    ];
-    return patterns.some(pattern => pattern.test(url));
-  }
-
-  /**
-   * Parse available formats from yt-dlp
-   */
-  parseFormats(formats) {
-    const videoFormats = [];
-    const audioFormats = [];
-
-    formats.forEach(format => {
-      if (format.vcodec !== 'none' && format.acodec === 'none') {
-        // Video only
-        videoFormats.push({
-          format_id: format.format_id,
-          ext: format.ext,
-          resolution: format.resolution,
-          filesize: format.filesize,
-          fps: format.fps
-        });
-      } else if (format.vcodec === 'none' && format.acodec !== 'none') {
-        // Audio only
-        audioFormats.push({
-          format_id: format.format_id,
-          ext: format.ext,
-          abr: format.abr,
-          filesize: format.filesize
-        });
-      }
-    });
-
-    return { 
-      video: videoFormats.slice(0, 10), // Limit to top 10
-      audio: audioFormats.slice(0, 5)   // Limit to top 5
-    };
-  }
-
-  /**
-   * Download video/audio based on specified format
-   */
-  async download(options) {
-    // Check if yt-dlp is available
-    const isAvailable = await this.checkYtDlpAvailable();
-    if (!isAvailable) {
-      throw new Error('yt-dlp is not installed or not accessible. Please install yt-dlp first.');
-    }
-
-    const downloadId = uuidv4();
     const {
       url,
       format = 'video+audio',
-      outputPath = this.defaultDownloadPath,
       quality = 'best',
       filename = null
     } = options;
@@ -333,161 +231,178 @@ class DownloadManager {
       throw new Error('Invalid YouTube URL provided');
     }
 
-    // Prepare output path
-    let cleanOutputPath = path.normalize(outputPath);
-    logInfo(`📁 Using output path: ${cleanOutputPath}`);
+    const downloadId = uuidv4();
+    logInfo(`📥 Starting direct download: ${downloadId}`);
 
-    // Ensure output directory exists
-    if (!fs.existsSync(cleanOutputPath)) {
-      try {
-        fs.mkdirSync(cleanOutputPath, { recursive: true });
-        logSuccess(`✅ Created directory: ${cleanOutputPath}`);
-      } catch (error) {
-        logError(`❌ Failed to create directory: ${error.message}`);
-        cleanOutputPath = this.defaultDownloadPath;
-        logInfo(`📁 Falling back to: ${cleanOutputPath}`);
-      }
-    }
-
-    // Initialize download status
-    const downloadStatus = {
-      id: downloadId,
-      url,
-      format,
-      quality,
-      status: 'starting',
-      progress: 0,
-      speed: '',
-      eta: '',
-      filename: '',
-      outputPath: cleanOutputPath,
-      error: null,
-      startTime: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    this.downloads.set(downloadId, downloadStatus);
-    logInfo(`📥 Download queued: ${downloadId}`);
-
-    // Start download in background
-    this.startBackgroundDownload(downloadStatus, url, format, cleanOutputPath, quality, filename);
-    
-    return downloadStatus;
-  }
-
-  /**
-   * Start download in background
-   */
-  async startBackgroundDownload(downloadStatus, url, format, outputPath, quality, filename) {
     try {
-      const args = this.buildYtDlpArgs(url, format, outputPath, quality, filename);
+      // Get video info first to determine filename
+      const videoInfo = await this.getVideoInfo(url);
       
-      logInfo(`Starting download: "${this.ytDlpPath}" ${args.join(' ')}`);
+      // Generate filename
+      const finalFilename = filename || this.generateFilename(videoInfo.title, format);
+      const outputPath = path.join(this.tempDownloadPath, finalFilename);
+
+      logInfo(`📁 Output file: ${outputPath}`);
+
+      // Build yt-dlp arguments
+      const args = this.buildYtDlpArgs(url, format, outputPath, quality);
       
-      const spawnOptions = {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: true,
-        windowsHide: true,
-        cwd: outputPath
-      };
-
-      const process = spawn(this.ytDlpPath, args, spawnOptions);
-
-      let stderr = '';
-
-      // Update status to downloading
-      this.updateDownloadStatus(downloadStatus.id, { status: 'downloading' });
-      logInfo(`📥 Download started: ${downloadStatus.id}`);
-
-      // Handle stdout for progress
-      process.stdout.on('data', (data) => {
-        const output = data.toString();
-        this.parseProgress(output, downloadStatus);
-      });
-
-      // Handle stderr
-      process.stderr.on('data', (data) => {
-        const errorOutput = data.toString();
-        stderr += errorOutput;
+      return new Promise((resolve, reject) => {
+        logInfo(`Running: "${this.ytDlpPath}" ${args.join(' ')}`);
         
-        if (!errorOutput.includes('ERROR:') && !errorOutput.includes('WARNING:')) {
-          this.parseProgress(errorOutput, downloadStatus);
-        }
-      });
-
-      // Handle completion
-      process.on('close', (code) => {
-        logInfo(`Download process exited with code: ${code}`);
-        if (code === 0) {
-          this.updateDownloadStatus(downloadStatus.id, {
-            status: 'completed',
-            progress: 100,
-            completedAt: new Date().toISOString()
-          });
-          logSuccess(`✅ Download completed: ${downloadStatus.filename}`);
-        } else {
-          this.updateDownloadStatus(downloadStatus.id, {
-            status: 'failed',
-            error: stderr || 'Download failed',
-            failedAt: new Date().toISOString()
-          });
-          logError(`❌ Download failed: ${stderr}`);
-        }
-      });
-
-      // Handle errors
-      process.on('error', (error) => {
-        logError('Process error:', error);
-        this.updateDownloadStatus(downloadStatus.id, {
-          status: 'failed',
-          error: error.code === 'ENOENT' ? 'yt-dlp executable not found' : error.message,
-          failedAt: new Date().toISOString()
+        const process = spawn(this.ytDlpPath, args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: true,
+          windowsHide: true,
+          cwd: this.tempDownloadPath
         });
+
+        let stderr = '';
+        let stdout = '';
+
+        process.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        process.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        process.on('close', (code) => {
+          if (code === 0) {
+            // Find the actual downloaded file
+            const downloadedFile = this.findDownloadedFile(this.tempDownloadPath, finalFilename, videoInfo.title);
+            
+            if (downloadedFile && fs.existsSync(downloadedFile)) {
+              logSuccess(`✅ Download completed: ${path.basename(downloadedFile)}`);
+              
+              resolve({
+                success: true,
+                filePath: downloadedFile,
+                filename: path.basename(downloadedFile),
+                size: fs.statSync(downloadedFile).size,
+                videoInfo: {
+                  title: videoInfo.title,
+                  duration: videoInfo.duration,
+                  uploader: videoInfo.uploader
+                }
+              });
+            } else {
+              logError('Downloaded file not found');
+              reject(new Error('Downloaded file not found'));
+            }
+          } else {
+            logError('Download failed:', stderr);
+            reject(new Error(stderr || 'Download failed'));
+          }
+        });
+
+        process.on('error', (error) => {
+          logError('Process error:', error);
+          reject(new Error(`Download process error: ${error.message}`));
+        });
+
+        // Timeout after 10 minutes
+        setTimeout(() => {
+          try { process.kill(); } catch (e) {}
+          reject(new Error('Download timeout'));
+        }, 600000);
       });
 
     } catch (error) {
-      logError('Failed to start download:', error);
-      this.updateDownloadStatus(downloadStatus.id, {
-        status: 'failed',
-        error: error.message,
-        failedAt: new Date().toISOString()
+      logError('Download error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find the downloaded file (yt-dlp might change the filename)
+   */
+  findDownloadedFile(directory, expectedFilename, videoTitle) {
+    try {
+      const files = fs.readdirSync(directory);
+      
+      // First, try exact match
+      if (files.includes(expectedFilename)) {
+        return path.join(directory, expectedFilename);
+      }
+
+      // Then, try to find files with similar names
+      const sanitizedTitle = sanitize(videoTitle).toLowerCase();
+      const matchingFiles = files.filter(file => {
+        const fileName = file.toLowerCase();
+        return fileName.includes(sanitizedTitle.substring(0, 20)) || 
+               sanitizedTitle.includes(fileName.replace(/\.[^/.]+$/, "").substring(0, 20));
       });
+
+      if (matchingFiles.length > 0) {
+        // Return the most recently modified file
+        const mostRecent = matchingFiles
+          .map(file => ({
+            file,
+            mtime: fs.statSync(path.join(directory, file)).mtime
+          }))
+          .sort((a, b) => b.mtime - a.mtime)[0];
+        
+        return path.join(directory, mostRecent.file);
+      }
+
+      // Last resort: return the most recent file in the directory
+      const allFiles = files
+        .filter(file => fs.statSync(path.join(directory, file)).isFile())
+        .map(file => ({
+          file,
+          mtime: fs.statSync(path.join(directory, file)).mtime
+        }))
+        .sort((a, b) => b.mtime - a.mtime);
+
+      if (allFiles.length > 0) {
+        return path.join(directory, allFiles[0].file);
+      }
+
+      return null;
+    } catch (error) {
+      logError('Error finding downloaded file:', error);
+      return null;
     }
   }
 
   /**
-   * Update download status
+   * Generate filename based on video title and format
    */
-  updateDownloadStatus(downloadId, updates) {
-    const download = this.downloads.get(downloadId);
-    if (download) {
-      Object.assign(download, updates, { updatedAt: new Date().toISOString() });
-      this.downloads.set(downloadId, download);
-    }
+  generateFilename(title, format) {
+    const sanitizedTitle = sanitize(title).substring(0, 100);
+    const extension = this.getFileExtension(format);
+    const timestamp = Date.now();
+    
+    return `${sanitizedTitle}_${timestamp}.${extension}`;
   }
 
   /**
-   * Build yt-dlp command arguments
+   * Get file extension based on format
    */
-  buildYtDlpArgs(url, format, outputPath, quality, customFilename) {
+  getFileExtension(format) {
+    const extensions = {
+      'video+audio': 'mp4',
+      'video-only': 'mp4',
+      'audio-only': 'mp3'
+    };
+    return extensions[format] || 'mp4';
+  }
+
+  /**
+   * Build yt-dlp command arguments for direct download
+   */
+  buildYtDlpArgs(url, format, outputPath, quality) {
     const args = [
       '--no-warnings',
-      '--newline',
       '--force-overwrites',
       '--ignore-errors',
       '--no-abort-on-error'
     ];
 
-    // Output template
-    let template;
-    if (customFilename) {
-      template = path.join(outputPath, sanitize(customFilename));
-    } else {
-      const suffix = format === 'audio-only' ? '_audio' : format === 'video-only' ? '_video' : '';
-      template = path.join(outputPath, `%(title)s${suffix}.%(ext)s`);
-    }
-    
-    args.push('-o', `"${template}"`);
+    // Output path
+    args.push('-o', `"${outputPath}"`);
 
     // FFmpeg location
     if (format === 'video+audio' && ffmpegPath) {
@@ -523,125 +438,90 @@ class DownloadManager {
   }
 
   /**
-   * Parse progress from yt-dlp output
+   * Get video information without downloading
    */
-  parseProgress(output, downloadStatus) {
-    if (downloadStatus.status === 'completed') return;
+  async getVideoInfo(url) {
+    logInfo(`Getting video info for: ${url}`);
+    
+    if (!this.isValidYouTubeUrl(url)) {
+      throw new Error('Invalid YouTube URL provided');
+    }
 
-    // Progress pattern
-    const progressMatch = output.match(/\[download\]\s+(\d+\.?\d*)%\s+of\s+[~]?(\d+\.?\d*\w+)\s+at\s+(\d+\.?\d*\w+\/s)(?:\s+ETA\s+(\d+:\d+))?/);
-    if (progressMatch) {
-      this.updateDownloadStatus(downloadStatus.id, {
-        progress: parseFloat(progressMatch[1]),
-        speed: progressMatch[3],
-        eta: progressMatch[4] || ''
+    const isAvailable = await this.checkYtDlpAvailable();
+    if (!isAvailable) {
+      throw new Error('yt-dlp is not working');
+    }
+
+    return new Promise((resolve, reject) => {
+      const args = [
+        '--dump-json',
+        '--no-warnings',
+        '--no-check-certificates',
+        '--socket-timeout', '30',
+        url
+      ];
+
+      const process = spawn(this.ytDlpPath, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: true,
+        windowsHide: true
       });
-    }
 
-    // Filename
-    if (!downloadStatus.filename) {
-      const filenameMatch = output.match(/\[download\]\s+Destination:\s+(.+)/);
-      if (filenameMatch) {
-        this.updateDownloadStatus(downloadStatus.id, {
-          filename: path.basename(filenameMatch[1])
-        });
-      }
-    }
+      let stdout = '';
+      let stderr = '';
 
-    // Completion
-    if (output.includes('[download] 100%') || output.includes('has already been downloaded')) {
-      this.updateDownloadStatus(downloadStatus.id, {
-        progress: 100,
-        status: 'completed',
-        completedAt: new Date().toISOString()
+      process.stdout.on('data', (data) => {
+        stdout += data.toString();
       });
-    }
 
-    // Processing
-    if (output.includes('[ffmpeg]') || output.includes('Merging formats')) {
-      this.updateDownloadStatus(downloadStatus.id, { status: 'processing' });
-    }
-  }
+      process.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
 
-  /**
-   * Get download status by ID
-   */
-  getDownloadStatus(downloadId) {
-    return this.downloads.get(downloadId) || null;
-  }
+      process.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const info = JSON.parse(stdout);
+            resolve({
+              id: info.id,
+              title: info.title,
+              duration: info.duration,
+              thumbnail: info.thumbnail,
+              uploader: info.uploader,
+              view_count: info.view_count,
+              upload_date: info.upload_date,
+              description: info.description?.substring(0, 500) + '...',
+              webpage_url: info.webpage_url
+            });
+          } catch (error) {
+            reject(new Error('Failed to parse video information'));
+          }
+        } else {
+          reject(new Error(stderr || 'Failed to get video information'));
+        }
+      });
 
-  /**
-   * Get all downloads
-   */
-  getAllDownloads() {
-    return Array.from(this.downloads.values()).sort((a, b) => 
-      new Date(b.startTime) - new Date(a.startTime)
-    );
-  }
+      process.on('error', (error) => {
+        reject(new Error(`yt-dlp process error: ${error.message}`));
+      });
 
-  /**
-   * Get downloads by status
-   */
-  getDownloadsByStatus(status) {
-    return this.getAllDownloads().filter(download => download.status === status);
-  }
-
-  /**
-   * Clear completed downloads
-   */
-  clearCompleted() {
-    let cleared = 0;
-    for (const [id, download] of this.downloads.entries()) {
-      if (download.status === 'completed' || download.status === 'failed') {
-        this.downloads.delete(id);
-        cleared++;
-      }
-    }
-    logInfo(`🗑️  Cleared ${cleared} completed/failed downloads`);
-    return cleared;
-  }
-
-  /**
-   * Cancel download by ID
-   */
-  cancelDownload(downloadId) {
-    const download = this.downloads.get(downloadId);
-    if (!download) {
-      throw new Error('Download not found');
-    }
-
-    if (download.status === 'completed') {
-      throw new Error('Cannot cancel completed download');
-    }
-
-    this.updateDownloadStatus(downloadId, {
-      status: 'cancelled',
-      cancelledAt: new Date().toISOString()
+      setTimeout(() => {
+        try { process.kill(); } catch (e) {}
+        reject(new Error('Video info request timed out'));
+      }, 60000);
     });
-
-    logInfo(`🚫 Download cancelled: ${downloadId}`);
-    return download;
   }
 
   /**
-   * Get download statistics
+   * Validate YouTube URL
    */
-  getStats() {
-    const downloads = this.getAllDownloads();
-    const stats = {
-      total: downloads.length,
-      completed: 0,
-      failed: 0,
-      downloading: 0,
-      cancelled: 0,
-      totalSize: 0
-    };
-
-    downloads.forEach(download => {
-      stats[download.status] = (stats[download.status] || 0) + 1;
-    });
-
-    return stats;
+  isValidYouTubeUrl(url) {
+    const patterns = [
+      /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)/,
+      /^https?:\/\/(www\.)?youtube\.com\/shorts\//,
+      /^https?:\/\/(www\.)?youtube\.com\/playlist\?list=/
+    ];
+    return patterns.some(pattern => pattern.test(url));
   }
 
   /**
@@ -654,10 +534,41 @@ class DownloadManager {
       nodeVersion: process.version,
       ytDlpPath: this.ytDlpPath,
       ffmpegPath: ffmpegPath,
-      defaultDownloadPath: this.defaultDownloadPath,
+      tempDownloadPath: this.tempDownloadPath,
       uptime: process.uptime(),
       memory: process.memoryUsage()
     };
+  }
+
+  /**
+   * Get cleanup statistics
+   */
+  getCleanupStats() {
+    try {
+      const files = fs.readdirSync(this.tempDownloadPath);
+      const totalSize = files.reduce((size, file) => {
+        try {
+          const filePath = path.join(this.tempDownloadPath, file);
+          return size + fs.statSync(filePath).size;
+        } catch {
+          return size;
+        }
+      }, 0);
+
+      return {
+        fileCount: files.length,
+        totalSize: totalSize,
+        totalSizeMB: Math.round(totalSize / 1024 / 1024),
+        tempPath: this.tempDownloadPath
+      };
+    } catch {
+      return {
+        fileCount: 0,
+        totalSize: 0,
+        totalSizeMB: 0,
+        tempPath: this.tempDownloadPath
+      };
+    }
   }
 }
 

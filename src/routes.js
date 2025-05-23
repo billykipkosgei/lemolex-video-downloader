@@ -1,12 +1,14 @@
 /**
- * Lemolex Video Downloader API Routes
- * All API endpoint definitions
+ * Enhanced Lemolex Video Downloader API Routes
+ * Returns files directly with automatic cleanup
  * Author: Billy
  */
 
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const DownloadManager = require('./downloadManager');
-const { logInfo, logError, logSuccess, validateYouTubeUrl } = require('./utils');
+const { logInfo, logError, logSuccess, validateYouTubeUrl, formatFileSize } = require('./utils');
 
 const router = express.Router();
 const downloadManager = new DownloadManager();
@@ -38,15 +40,14 @@ router.use(logResponse);
 router.get('/health', async (req, res) => {
   try {
     const systemInfo = downloadManager.getSystemInfo();
-    const stats = downloadManager.getStats();
+    const cleanupStats = downloadManager.getCleanupStats();
     
-    // Quick yt-dlp check
     const ytDlpWorking = await downloadManager.checkYtDlpAvailable();
     
     res.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      server: 'Lemolex Video Downloader API',
+      server: 'Enhanced Lemolex Video Downloader API',
       version: require('../package.json').version,
       uptime: process.uptime(),
       system: {
@@ -65,7 +66,11 @@ router.get('/health', async (req, res) => {
           path: systemInfo.ffmpegPath
         }
       },
-      downloads: stats
+      tempFiles: {
+        count: cleanupStats.fileCount,
+        totalSize: formatFileSize(cleanupStats.totalSize),
+        path: cleanupStats.tempPath
+      }
     });
   } catch (error) {
     logError('Health check error:', error);
@@ -83,11 +88,18 @@ router.get('/health', async (req, res) => {
  */
 router.get('/docs', (req, res) => {
   res.json({
-    name: 'Lemolex Video Downloader API',
+    name: 'Enhanced Lemolex Video Downloader API',
     version: require('../package.json').version,
-    description: 'Professional YouTube Video & Audio Downloader API',
+    description: 'YouTube Video & Audio Downloader API with File Return',
     author: 'Billy',
     baseUrl: `${req.protocol}://${req.get('host')}/api`,
+    features: [
+      '📁 Direct file download and return',
+      '🗑️ Automatic temporary file cleanup',
+      '⚡ Single request-response workflow',
+      '🎵 Multiple format support (MP4, MP3)',
+      '🔧 Quality selection options'
+    ],
     endpoints: {
       health: {
         method: 'GET',
@@ -102,58 +114,48 @@ router.get('/docs', (req, res) => {
       info: {
         method: 'POST',
         path: '/info',
-        description: 'Get YouTube video information',
+        description: 'Get YouTube video information only',
         body: {
           url: 'string (required) - YouTube video URL'
-        },
-        example: {
-          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
         }
       },
-      download: {
+      downloadVideo: {
+        method: 'POST',
+        path: '/download/video',
+        description: 'Download video and return file directly',
+        body: {
+          url: 'string (required) - YouTube video URL',
+          quality: 'string (optional) - best|1080p|720p|480p|360p',
+          filename: 'string (optional) - Custom filename'
+        },
+        response: 'Returns the video file directly'
+      },
+      downloadAudio: {
+        method: 'POST',
+        path: '/download/audio',
+        description: 'Download audio and return MP3 file directly',
+        body: {
+          url: 'string (required) - YouTube video URL',
+          filename: 'string (optional) - Custom filename'
+        },
+        response: 'Returns the audio file directly'
+      },
+      downloadCustom: {
         method: 'POST',
         path: '/download',
-        description: 'Start video/audio download',
+        description: 'Download with custom format options',
         body: {
           url: 'string (required) - YouTube video URL',
           format: 'string (optional) - video+audio|video-only|audio-only',
           quality: 'string (optional) - best|1080p|720p|480p|360p',
-          outputPath: 'string (optional) - Download directory path',
           filename: 'string (optional) - Custom filename'
         },
-        example: {
-          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-          format: 'video+audio',
-          quality: 'best'
-        }
+        response: 'Returns the downloaded file directly'
       },
-      downloadStatus: {
-        method: 'GET',
-        path: '/download/:id',
-        description: 'Get download progress and status',
-        params: {
-          id: 'string - Download ID returned from /download'
-        }
-      },
-      allDownloads: {
-        method: 'GET',
-        path: '/downloads',
-        description: 'Get all downloads with status'
-      },
-      stats: {
-        method: 'GET',
-        path: '/stats',
-        description: 'Get download statistics'
-      },
-      clearCompleted: {
-        method: 'DELETE',
-        path: '/downloads/completed',
-        description: 'Clear completed and failed downloads'
-      },
-      cancelDownload: {
-        method: 'DELETE',
-        path: '/download/:id',
-        description: 'Cancel an active download'
+      cleanup: {
+        method: 'POST',
+        path: '/cleanup',
+        description: 'Manually trigger cleanup of temporary files'
       }
     },
     supportedFormats: [
@@ -171,28 +173,34 @@ router.get('/docs', (req, res) => {
     examples: {
       curl: {
         getInfo: `curl -X POST ${req.protocol}://${req.get('host')}/api/info -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'`,
-        startDownload: `curl -X POST ${req.protocol}://${req.get('host')}/api/download -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","format":"video+audio","quality":"best"}'`,
-        checkStatus: `curl ${req.protocol}://${req.get('host')}/api/download/[DOWNLOAD_ID]`
+        downloadVideo: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/video -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","quality":"720p"}' --output video.mp4`,
+        downloadAudio: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/audio -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' --output audio.mp3`
+      },
+      postman: {
+        note: 'Set request type to POST, add JSON body with URL, and Postman will automatically download the returned file'
       }
-    }
+    },
+    workflow: [
+      '1. Send POST request to /api/download/video or /api/download/audio',
+      '2. API downloads the video/audio',
+      '3. API returns the file directly in the response',
+      '4. Old temporary files are automatically cleaned up'
+    ]
   });
 });
 
 /**
- * Get Video Information
+ * Get Video Information Only
  * POST /api/info
  */
 router.post('/info', async (req, res) => {
   try {
     const { url } = req.body;
 
-    // Validate input
     if (!url) {
       return res.status(400).json({
         error: 'URL is required',
-        example: {
-          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
-        }
+        example: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }
       });
     }
 
@@ -208,7 +216,6 @@ router.post('/info', async (req, res) => {
     }
 
     logInfo(`📋 Getting info for: ${url}`);
-
     const videoInfo = await downloadManager.getVideoInfo(url);
 
     res.json({
@@ -228,7 +235,166 @@ router.post('/info', async (req, res) => {
 });
 
 /**
- * Start Download
+ * Download Video and Return File
+ * POST /api/download/video
+ */
+router.post('/download/video', async (req, res) => {
+  try {
+    const { url, quality = 'best', filename } = req.body;
+
+    if (!url) {
+      return res.status(400).json({
+        error: 'URL is required',
+        example: {
+          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          quality: 'best'
+        }
+      });
+    }
+
+    if (!validateYouTubeUrl(url)) {
+      return res.status(400).json({
+        error: 'Invalid YouTube URL'
+      });
+    }
+
+    const validQualities = ['best', '1080p', '720p', '480p', '360p'];
+    if (!validQualities.includes(quality)) {
+      return res.status(400).json({
+        error: 'Invalid quality',
+        supportedQualities: validQualities
+      });
+    }
+
+    logInfo(`📹 Downloading video: ${url} (${quality})`);
+
+    const result = await downloadManager.downloadAndReturnFile({
+      url,
+      format: 'video+audio',
+      quality,
+      filename
+    });
+
+    if (result.success && fs.existsSync(result.filePath)) {
+      const fileStats = fs.statSync(result.filePath);
+      
+      logSuccess(`✅ Sending video file: ${result.filename} (${formatFileSize(fileStats.size)})`);
+
+      // Set headers for file download
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Content-Length', fileStats.size);
+      res.setHeader('X-Video-Title', encodeURIComponent(result.videoInfo.title));
+      res.setHeader('X-Video-Duration', result.videoInfo.duration);
+      res.setHeader('X-Video-Uploader', encodeURIComponent(result.videoInfo.uploader));
+
+      // Stream the file
+      const fileStream = fs.createReadStream(result.filePath);
+      
+      fileStream.on('end', () => {
+        // Delete the file after sending
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(result.filePath);
+            logInfo(`🗑️ Cleaned up: ${result.filename}`);
+          } catch (error) {
+            logWarning(`Failed to cleanup ${result.filename}: ${error.message}`);
+          }
+        }, 1000);
+      });
+
+      fileStream.pipe(res);
+    } else {
+      throw new Error('Failed to generate video file');
+    }
+
+  } catch (error) {
+    logError('Video download error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Download Audio and Return File
+ * POST /api/download/audio
+ */
+router.post('/download/audio', async (req, res) => {
+  try {
+    const { url, filename } = req.body;
+
+    if (!url) {
+      return res.status(400).json({
+        error: 'URL is required',
+        example: {
+          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+        }
+      });
+    }
+
+    if (!validateYouTubeUrl(url)) {
+      return res.status(400).json({
+        error: 'Invalid YouTube URL'
+      });
+    }
+
+    logInfo(`🎵 Downloading audio: ${url}`);
+
+    const result = await downloadManager.downloadAndReturnFile({
+      url,
+      format: 'audio-only',
+      quality: 'best',
+      filename
+    });
+
+    if (result.success && fs.existsSync(result.filePath)) {
+      const fileStats = fs.statSync(result.filePath);
+      
+      logSuccess(`✅ Sending audio file: ${result.filename} (${formatFileSize(fileStats.size)})`);
+
+      // Set headers for file download
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Content-Length', fileStats.size);
+      res.setHeader('X-Video-Title', encodeURIComponent(result.videoInfo.title));
+      res.setHeader('X-Video-Duration', result.videoInfo.duration);
+      res.setHeader('X-Video-Uploader', encodeURIComponent(result.videoInfo.uploader));
+
+      // Stream the file
+      const fileStream = fs.createReadStream(result.filePath);
+      
+      fileStream.on('end', () => {
+        // Delete the file after sending
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(result.filePath);
+            logInfo(`🗑️ Cleaned up: ${result.filename}`);
+          } catch (error) {
+            logWarning(`Failed to cleanup ${result.filename}: ${error.message}`);
+          }
+        }, 1000);
+      });
+
+      fileStream.pipe(res);
+    } else {
+      throw new Error('Failed to generate audio file');
+    }
+
+  } catch (error) {
+    logError('Audio download error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * Download with Custom Format Options
  * POST /api/download
  */
 router.post('/download', async (req, res) => {
@@ -237,11 +403,9 @@ router.post('/download', async (req, res) => {
       url, 
       format = 'video+audio', 
       quality = 'best',
-      outputPath,
       filename
     } = req.body;
 
-    // Validate input
     if (!url) {
       return res.status(400).json({
         error: 'URL is required',
@@ -255,16 +419,10 @@ router.post('/download', async (req, res) => {
 
     if (!validateYouTubeUrl(url)) {
       return res.status(400).json({
-        error: 'Invalid YouTube URL',
-        supportedUrls: [
-          'https://www.youtube.com/watch?v=...',
-          'https://youtu.be/...',
-          'https://www.youtube.com/shorts/...'
-        ]
+        error: 'Invalid YouTube URL'
       });
     }
 
-    // Validate format
     const validFormats = ['video+audio', 'video-only', 'audio-only'];
     if (!validFormats.includes(format)) {
       return res.status(400).json({
@@ -273,7 +431,6 @@ router.post('/download', async (req, res) => {
       });
     }
 
-    // Validate quality
     const validQualities = ['best', '1080p', '720p', '480p', '360p'];
     if (!validQualities.includes(quality)) {
       return res.status(400).json({
@@ -282,27 +439,59 @@ router.post('/download', async (req, res) => {
       });
     }
 
-    logInfo(`📥 Starting download: ${url} (${format}, ${quality})`);
+    logInfo(`📥 Downloading: ${url} (${format}, ${quality})`);
 
-    const downloadResult = await downloadManager.download({
+    const result = await downloadManager.downloadAndReturnFile({
       url,
       format,
       quality,
-      outputPath,
       filename
     });
 
-    logSuccess(`✅ Download queued: ${downloadResult.id}`);
+    if (result.success && fs.existsSync(result.filePath)) {
+      const fileStats = fs.statSync(result.filePath);
+      
+      logSuccess(`✅ Sending file: ${result.filename} (${formatFileSize(fileStats.size)})`);
 
-    res.json({
-      success: true,
-      data: downloadResult,
-      message: 'Download started successfully',
-      timestamp: new Date().toISOString()
-    });
+      // Determine content type based on format
+      let contentType;
+      if (format === 'audio-only') {
+        contentType = 'audio/mpeg';
+      } else {
+        contentType = 'video/mp4';
+      }
+
+      // Set headers for file download
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Content-Length', fileStats.size);
+      res.setHeader('X-Video-Title', encodeURIComponent(result.videoInfo.title));
+      res.setHeader('X-Video-Duration', result.videoInfo.duration);
+      res.setHeader('X-Video-Uploader', encodeURIComponent(result.videoInfo.uploader));
+      res.setHeader('X-Download-Format', format);
+
+      // Stream the file
+      const fileStream = fs.createReadStream(result.filePath);
+      
+      fileStream.on('end', () => {
+        // Delete the file after sending
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(result.filePath);
+            logInfo(`🗑️ Cleaned up: ${result.filename}`);
+          } catch (error) {
+            logWarning(`Failed to cleanup ${result.filename}: ${error.message}`);
+          }
+        }, 1000);
+      });
+
+      fileStream.pipe(res);
+    } else {
+      throw new Error('Failed to generate file');
+    }
 
   } catch (error) {
-    logError('Download start error:', error);
+    logError('Download error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -312,104 +501,29 @@ router.post('/download', async (req, res) => {
 });
 
 /**
- * Get Download Status
- * GET /api/download/:id
+ * Manual Cleanup Trigger
+ * POST /api/cleanup
  */
-router.get('/download/:id', (req, res) => {
+router.post('/cleanup', async (req, res) => {
   try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({
-        error: 'Download ID is required'
-      });
-    }
-
-    const downloadStatus = downloadManager.getDownloadStatus(id);
-
-    if (!downloadStatus) {
-      return res.status(404).json({
-        success: false,
-        error: 'Download not found',
-        downloadId: id
-      });
-    }
-
-    res.json({
-      success: true,
-      data: downloadStatus,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    logError('Get download status error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-/**
- * Get All Downloads
- * GET /api/downloads
- */
-router.get('/downloads', (req, res) => {
-  try {
-    const { status, limit = 50 } = req.query;
+    logInfo('🗑️ Manual cleanup triggered');
     
-    let downloads = downloadManager.getAllDownloads();
-
-    // Filter by status if provided
-    if (status) {
-      downloads = downloads.filter(download => download.status === status);
-    }
-
-    // Limit results
-    downloads = downloads.slice(0, parseInt(limit));
+    const cleanedCount = await downloadManager.cleanupTempFiles();
+    const stats = downloadManager.getCleanupStats();
 
     res.json({
       success: true,
-      data: downloads,
-      total: downloads.length,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    logError('Get downloads error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-/**
- * Get Download Statistics
- * GET /api/stats
- */
-router.get('/stats', (req, res) => {
-  try {
-    const stats = downloadManager.getStats();
-    const systemInfo = downloadManager.getSystemInfo();
-
-    res.json({
-      success: true,
-      data: {
-        downloads: stats,
-        system: {
-          uptime: systemInfo.uptime,
-          memory: systemInfo.memory,
-          platform: systemInfo.platform
-        }
+      message: `Cleaned up ${cleanedCount} temporary files`,
+      cleanedCount,
+      remaining: {
+        fileCount: stats.fileCount,
+        totalSize: formatFileSize(stats.totalSize)
       },
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    logError('Get stats error:', error);
+    logError('Cleanup error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -419,64 +533,28 @@ router.get('/stats', (req, res) => {
 });
 
 /**
- * Clear Completed Downloads
- * DELETE /api/downloads/completed
+ * Get Temporary Files Status
+ * GET /api/temp-status
  */
-router.delete('/downloads/completed', (req, res) => {
+router.get('/temp-status', (req, res) => {
   try {
-    const clearedCount = downloadManager.clearCompleted();
-
-    res.json({
-      success: true,
-      message: `Cleared ${clearedCount} completed/failed downloads`,
-      clearedCount,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    logError('Clear completed error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-/**
- * Cancel Download
- * DELETE /api/download/:id
- */
-router.delete('/download/:id', (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id) {
-      return res.status(400).json({
-        error: 'Download ID is required'
-      });
-    }
-
-    const cancelledDownload = downloadManager.cancelDownload(id);
-
-    res.json({
-      success: true,
-      data: cancelledDownload,
-      message: 'Download cancelled successfully',
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    logError('Cancel download error:', error);
+    const stats = downloadManager.getCleanupStats();
     
-    if (error.message === 'Download not found') {
-      return res.status(404).json({
-        success: false,
-        error: error.message,
-        downloadId: id
-      });
-    }
+    res.json({
+      success: true,
+      data: {
+        fileCount: stats.fileCount,
+        totalSize: formatFileSize(stats.totalSize),
+        totalSizeMB: stats.totalSizeMB,
+        tempPath: stats.tempPath,
+        maxAge: '30 minutes',
+        maxFiles: 50
+      },
+      timestamp: new Date().toISOString()
+    });
 
+  } catch (error) {
+    logError('Temp status error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -494,12 +572,11 @@ router.use('*', (req, res) => {
       'GET /api/health',
       'GET /api/docs',
       'POST /api/info',
+      'POST /api/download/video',
+      'POST /api/download/audio',
       'POST /api/download',
-      'GET /api/download/:id',
-      'GET /api/downloads',
-      'GET /api/stats',
-      'DELETE /api/downloads/completed',
-      'DELETE /api/download/:id'
+      'POST /api/cleanup',
+      'GET /api/temp-status'
     ]
   });
 });

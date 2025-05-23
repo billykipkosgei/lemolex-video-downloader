@@ -1,7 +1,7 @@
 {
   "name": "lemolex-video-downloader",
-  "version": "1.0.0",
-  "description": "Professional YouTube Video & Audio Downloader API Server",
+  "version": "2.0.0",
+  "description": "Enhanced YouTube Video & Audio Downloader API with Direct File Return",
   "main": "server.js",
   "author": "Billy",
   "license": "MIT",
@@ -15,7 +15,11 @@
     "api",
     "rest",
     "yt-dlp",
-    "ffmpeg"
+    "ffmpeg",
+    "railway",
+    "enhanced",
+    "file-return",
+    "postman"
   ],
   "scripts": {
     "start": "node server.js",
@@ -26,7 +30,16 @@
     "setup": "npm install && npm run health-check",
     "health-check": "node -e \"console.log('✅ Setup complete! Run: npm start')\"",
     "clean": "rm -rf node_modules package-lock.json && npm install",
-    "production": "NODE_ENV=production node server.js"
+    "production": "NODE_ENV=production node server.js",
+    "postinstall": "npm run install-ytdlp",
+    "install-ytdlp": "npm run create-bin-dir && npm run download-ytdlp",
+    "create-bin-dir": "mkdir -p bin",
+    "download-ytdlp": "curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp || echo 'yt-dlp download failed, will try system installation'",
+    "railway-build": "npm install && npm run install-ytdlp-railway",
+    "install-ytdlp-railway": "mkdir -p bin && (curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp) || echo 'Using system yt-dlp'",
+    "cleanup": "curl -X POST http://localhost:3001/api/cleanup",
+    "test-video": "curl -X POST http://localhost:3001/api/download/video -H 'Content-Type: application/json' -d '{\"url\":\"https://youtu.be/dQw4w9WgXcQ\"}' --output test-video.mp4",
+    "test-audio": "curl -X POST http://localhost:3001/api/download/audio -H 'Content-Type: application/json' -d '{\"url\":\"https://youtu.be/dQw4w9WgXcQ\"}' --output test-audio.mp3"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -46,12 +59,42 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/billykipkosgei/lemolex-video-downloader-api.git"
+    "url": "https://github.com/billykipkosgei/enhanced-lemolex-video-downloader-api.git"
   },
   "bugs": {
-    "url": "https://github.com/billykipkosgei/lemolex-video-downloader-api/issues"
+    "url": "https://github.com/billykipkosgei/enhanced-lemolex-video-downloader-api/issues"
   },
-  "homepage": "https://github.com/billykipkosgei/lemolex-video-downloader-api#readme",
+  "homepage": "https://github.com/billykipkosgei/enhanced-lemolex-video-downloader-api#readme",
   "preferGlobal": false,
-  "private": false
+  "private": false,
+  "railway": {
+    "build": {
+      "command": "npm run railway-build"
+    },
+    "start": {
+      "command": "npm start"
+    }
+  },
+  "config": {
+    "ytdlp": {
+      "version": "latest",
+      "fallback": "system"
+    },
+    "cleanup": {
+      "maxAge": "30m",
+      "maxFiles": 50
+    }
+  },
+  "files": [
+    "server.js",
+    "src/",
+    "bin/",
+    "docs/",
+    "examples/",
+    "README.md"
+  ],
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/sponsors/billykipkosgei"
+  }
 }
