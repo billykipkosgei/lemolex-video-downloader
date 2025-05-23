@@ -189,47 +189,76 @@ class DownloadManager {
       logInfo(`Testing yt-dlp at: ${this.ytDlpPath}`);
       
       try {
-        const process = spawn(this.ytDlpPath, ['--version'], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: false, // Don't use shell for better compatibility
-          windowsHide: true
-        });
+        // Try with python3 first, then fallback to direct execution
+        const processes = [
+          () => spawn('python3', [this.ytDlpPath, '--version'], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            shell: false,
+            windowsHide: true
+          }),
+          () => spawn(this.ytDlpPath, ['--version'], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            shell: false,
+            windowsHide: true
+          })
+        ];
 
-        let hasOutput = false;
-        let stdout = '';
+        let processIndex = 0;
 
-        process.stdout.on('data', (data) => {
-          const version = data.toString().trim();
-          stdout += version;
-          logSuccess(`✅ yt-dlp version: ${version}`);
-          hasOutput = true;
-        });
-
-        process.stderr.on('data', (data) => {
-          logWarning(`yt-dlp stderr: ${data.toString()}`);
-        });
-
-        process.on('close', (code) => {
-          logInfo(`yt-dlp process exited with code: ${code}`);
-          resolve(code === 0 && hasOutput);
-        });
-
-        process.on('error', (error) => {
-          logError(`yt-dlp error: ${error.message}`);
-          if (error.code === 'ENOENT') {
-            logError(`yt-dlp not found at: ${this.ytDlpPath}`);
+        const tryNextProcess = () => {
+          if (processIndex >= processes.length) {
+            logError('All yt-dlp execution methods failed');
+            resolve(false);
+            return;
           }
-          resolve(false);
-        });
 
-        // Timeout after 10 seconds
-        setTimeout(() => {
-          try {
-            process.kill();
-          } catch (e) {}
-          logError('yt-dlp check timed out');
-          resolve(false);
-        }, 10000);
+          const process = processes[processIndex]();
+          processIndex++;
+
+          let hasOutput = false;
+          let stdout = '';
+
+          process.stdout.on('data', (data) => {
+            const version = data.toString().trim();
+            stdout += version;
+            logSuccess(`✅ yt-dlp version: ${version}`);
+            hasOutput = true;
+          });
+
+          process.stderr.on('data', (data) => {
+            const stderr = data.toString();
+            if (stderr.includes('python3') && stderr.includes('No such file')) {
+              logWarning(`Python3 not found, trying direct execution...`);
+            } else {
+              logWarning(`yt-dlp stderr: ${stderr}`);
+            }
+          });
+
+          process.on('close', (code) => {
+            logInfo(`yt-dlp process exited with code: ${code}`);
+            if (code === 0 && hasOutput) {
+              resolve(true);
+            } else {
+              tryNextProcess();
+            }
+          });
+
+          process.on('error', (error) => {
+            logWarning(`yt-dlp execution method ${processIndex} failed: ${error.message}`);
+            tryNextProcess();
+          });
+
+          // Timeout after 5 seconds per attempt
+          setTimeout(() => {
+            try {
+              process.kill();
+            } catch (e) {}
+            tryNextProcess();
+          }, 5000);
+        };
+
+        tryNextProcess();
+
       } catch (error) {
         logError(`Failed to spawn yt-dlp: ${error.message}`);
         resolve(false);
