@@ -1,6 +1,6 @@
 /**
  * Enhanced Lemolex Video Downloader - Download Manager
- * Returns files directly and includes automatic cleanup
+ * Railway-compatible version with proper yt-dlp path detection
  * Author: Billy
  */
 
@@ -50,6 +50,74 @@ class DownloadManager {
       }
     }
     this.tempDownloadPath = tempPath;
+  }
+
+  /**
+   * Find yt-dlp executable path - Railway/Docker compatible
+   */
+  findYtDlpPath() {
+    logInfo(`🔍 Looking for yt-dlp...`);
+    
+    const possiblePaths = [
+      // Railway/Docker paths (prioritize these)
+      '/app/bin/yt-dlp',
+      path.join(__dirname, '../bin/yt-dlp'),
+      path.join(process.cwd(), 'bin/yt-dlp'),
+      './bin/yt-dlp',
+      
+      // Container/Linux system paths
+      '/usr/local/bin/yt-dlp',
+      '/usr/bin/yt-dlp',
+      '/bin/yt-dlp',
+      
+      // PATH fallback
+      'yt-dlp',
+      
+      // Windows paths (for local development)
+      path.join(process.cwd(), 'bin', 'yt-dlp.exe'),
+      'yt-dlp.exe'
+    ];
+
+    logInfo('🔍 Checking paths:');
+    
+    for (const ytdlpPath of possiblePaths) {
+      try {
+        logInfo(`   Checking: ${ytdlpPath}`);
+        if (fs.existsSync(ytdlpPath)) {
+          const stats = fs.statSync(ytdlpPath);
+          if (stats.size > 0) {
+            // Check if it's executable
+            try {
+              fs.accessSync(ytdlpPath, fs.constants.X_OK);
+              logSuccess(`✅ Found executable yt-dlp at: ${ytdlpPath} (${Math.round(stats.size / 1024 / 1024)}MB)`);
+              return ytdlpPath;
+            } catch (execError) {
+              logWarning(`⚠️  File exists but not executable: ${ytdlpPath}`);
+              // Try to make it executable
+              try {
+                fs.chmodSync(ytdlpPath, 0o755);
+                logSuccess(`✅ Made executable and using: ${ytdlpPath}`);
+                return ytdlpPath;
+              } catch (chmodError) {
+                logWarning(`⚠️  Could not make executable: ${chmodError.message}`);
+              }
+            }
+          } else {
+            logWarning(`⚠️  File is empty, skipping`);
+          }
+        } else {
+          logInfo(`   ❌ Not found`);
+        }
+      } catch (error) {
+        logWarning(`   ⚠️  Error checking: ${error.message}`);
+        continue;
+      }
+    }
+
+    // Fallback to Railway expected path
+    const railwayPath = '/app/bin/yt-dlp';
+    logWarning(`⚠️  Using Railway fallback path: ${railwayPath}`);
+    return railwayPath;
   }
 
   /**
@@ -114,89 +182,56 @@ class DownloadManager {
   }
 
   /**
-   * Find yt-dlp executable path
-   */
-  findYtDlpPath() {
-    const username = os.userInfo().username;
-    logInfo(`🔍 Looking for yt-dlp for user: ${username}`);
-    
-    const possiblePaths = [
-      // User-specific Python installations
-      `C:\\Users\\${username}\\AppData\\Roaming\\Python\\Python313\\Scripts\\yt-dlp.exe`,
-      `C:\\Users\\${username}\\AppData\\Roaming\\Python\\Python312\\Scripts\\yt-dlp.exe`,
-      `C:\\Users\\${username}\\AppData\\Roaming\\Python\\Python311\\Scripts\\yt-dlp.exe`,
-      `C:\\Users\\${username}\\AppData\\Roaming\\Python\\Python310\\Scripts\\yt-dlp.exe`,
-      
-      // Local project paths
-      path.join(__dirname, '../bin/yt-dlp.exe'),
-      path.join(process.cwd(), 'bin/yt-dlp.exe'),
-      
-      // System installations
-      'C:\\Python313\\Scripts\\yt-dlp.exe',
-      'C:\\Python312\\Scripts\\yt-dlp.exe',
-      'C:\\Python311\\Scripts\\yt-dlp.exe',
-      'C:\\Python310\\Scripts\\yt-dlp.exe',
-      
-      // Unix-like systems
-      '/usr/local/bin/yt-dlp',
-      '/usr/bin/yt-dlp',
-      
-      // PATH fallback
-      'yt-dlp',
-      'yt-dlp.exe'
-    ];
-
-    for (const ytdlpPath of possiblePaths) {
-      try {
-        if (fs.existsSync(ytdlpPath)) {
-          const stats = fs.statSync(ytdlpPath);
-          if (stats.size > 0) {
-            logSuccess(`✅ Found yt-dlp at: ${ytdlpPath}`);
-            return ytdlpPath;
-          }
-        }
-      } catch (error) {
-        continue;
-      }
-    }
-
-    // Fallback
-    const pythonPath = `C:\\Users\\${username}\\AppData\\Roaming\\Python\\Python313\\Scripts\\yt-dlp.exe`;
-    logWarning(`⚠️  Using fallback path: ${pythonPath}`);
-    return pythonPath;
-  }
-
-  /**
    * Check if yt-dlp is available and working
    */
   async checkYtDlpAvailable() {
     return new Promise((resolve) => {
+      logInfo(`Testing yt-dlp at: ${this.ytDlpPath}`);
+      
       try {
         const process = spawn(this.ytDlpPath, ['--version'], {
           stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true,
+          shell: false, // Don't use shell for better compatibility
           windowsHide: true
         });
 
         let hasOutput = false;
+        let stdout = '';
 
         process.stdout.on('data', (data) => {
+          const version = data.toString().trim();
+          stdout += version;
+          logSuccess(`✅ yt-dlp version: ${version}`);
           hasOutput = true;
         });
 
+        process.stderr.on('data', (data) => {
+          logWarning(`yt-dlp stderr: ${data.toString()}`);
+        });
+
         process.on('close', (code) => {
+          logInfo(`yt-dlp process exited with code: ${code}`);
           resolve(code === 0 && hasOutput);
         });
 
-        process.on('error', () => {
+        process.on('error', (error) => {
+          logError(`yt-dlp error: ${error.message}`);
+          if (error.code === 'ENOENT') {
+            logError(`yt-dlp not found at: ${this.ytDlpPath}`);
+          }
           resolve(false);
         });
 
+        // Timeout after 10 seconds
         setTimeout(() => {
-          try { process.kill(); } catch (e) {}
+          try {
+            process.kill();
+          } catch (e) {}
+          logError('yt-dlp check timed out');
           resolve(false);
         }, 10000);
       } catch (error) {
+        logError(`Failed to spawn yt-dlp: ${error.message}`);
         resolve(false);
       }
     });
@@ -212,7 +247,7 @@ class DownloadManager {
     // Check if yt-dlp is available
     const isAvailable = await this.checkYtDlpAvailable();
     if (!isAvailable) {
-      throw new Error('yt-dlp is not installed or not accessible');
+      throw new Error(`yt-dlp is not installed or not accessible at: ${this.ytDlpPath}`);
     }
 
     const {
@@ -252,7 +287,7 @@ class DownloadManager {
         
         const process = spawn(this.ytDlpPath, args, {
           stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true,
+          shell: false,
           windowsHide: true,
           cwd: this.tempDownloadPath
         });
@@ -289,6 +324,8 @@ class DownloadManager {
               });
             } else {
               logError('Downloaded file not found');
+              logError('stdout:', stdout);
+              logError('stderr:', stderr);
               reject(new Error('Downloaded file not found'));
             }
           } else {
@@ -398,15 +435,16 @@ class DownloadManager {
       '--no-warnings',
       '--force-overwrites',
       '--ignore-errors',
-      '--no-abort-on-error'
+      '--no-abort-on-error',
+      '--socket-timeout', '30'
     ];
 
     // Output path
-    args.push('-o', `"${outputPath}"`);
+    args.push('-o', outputPath);
 
     // FFmpeg location
     if (format === 'video+audio' && ffmpegPath) {
-      args.push('--ffmpeg-location', `"${ffmpegPath}"`);
+      args.push('--ffmpeg-location', ffmpegPath);
     }
 
     // Format selection
@@ -449,7 +487,7 @@ class DownloadManager {
 
     const isAvailable = await this.checkYtDlpAvailable();
     if (!isAvailable) {
-      throw new Error('yt-dlp is not working');
+      throw new Error(`yt-dlp is not working at: ${this.ytDlpPath}`);
     }
 
     return new Promise((resolve, reject) => {
@@ -463,7 +501,7 @@ class DownloadManager {
 
       const process = spawn(this.ytDlpPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: true,
+        shell: false,
         windowsHide: true
       });
 

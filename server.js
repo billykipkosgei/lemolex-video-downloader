@@ -1,6 +1,6 @@
 /**
  * Enhanced Lemolex Video Downloader API Server
- * Returns files directly with automatic cleanup
+ * Railway-compatible version with file return support
  * Author: Billy
  */
 
@@ -16,7 +16,7 @@ const { logInfo, logError, logSuccess } = require('./src/utils');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const HOST = process.env.HOST || 'localhost';
+const HOST = '0.0.0.0'; // Important for Railway - bind to all interfaces
 
 // Enhanced middleware configuration
 app.use(cors({
@@ -81,9 +81,15 @@ app.get('/', (req, res) => {
         note: 'Postman will automatically download the returned file'
       },
       curl: {
-        video: 'curl -X POST http://localhost:3001/api/download/video -H "Content-Type: application/json" -d \'{"url":"https://youtu.be/dQw4w9WgXcQ"}\' --output video.mp4',
-        audio: 'curl -X POST http://localhost:3001/api/download/audio -H "Content-Type: application/json" -d \'{"url":"https://youtu.be/dQw4w9WgXcQ"}\' --output audio.mp3'
+        video: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/video -H "Content-Type: application/json" -d '{"url":"https://youtu.be/dQw4w9WgXcQ"}' --output video.mp4`,
+        audio: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/audio -H "Content-Type: application/json" -d '{"url":"https://youtu.be/dQw4w9WgXcQ"}' --output audio.mp3`
       }
+    },
+    railway: {
+      deployed: true,
+      url: `${req.protocol}://${req.get('host')}`,
+      region: process.env.RAILWAY_REGION || 'unknown',
+      environment: process.env.NODE_ENV || 'development'
     }
   });
 });
@@ -190,27 +196,22 @@ const server = app.listen(PORT, HOST, () => {
   console.log('\n' + '='.repeat(70));
   logSuccess(`🚀 Enhanced Lemolex Video Downloader API Started!`);
   console.log('='.repeat(70));
-  logInfo(`📡 Server URL: http://${HOST}:${PORT}`);
-  logInfo(`📖 API Documentation: http://${HOST}:${PORT}/api/docs`);
-  logInfo(`❤️  Health Check: http://${HOST}:${PORT}/api/health`);
+  logInfo(`📡 Server running on: http://${HOST}:${PORT}`);
+  logInfo(`🌐 Railway URL: https://lemolex-video-downloader-production.up.railway.app`);
+  logInfo(`📖 API Documentation: /api/docs`);
+  logInfo(`❤️ Health Check: /api/health`);
   logInfo(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
-  logInfo(`🌐 Railway Ready: Yes`);
+  logInfo(`🚀 Railway Ready: Yes`);
   console.log('='.repeat(70));
   
   // Quick health check and system info
   logInfo('🔍 Performing startup checks...');
   setTimeout(() => {
     logSuccess('✅ Enhanced API Server is ready!');
-    console.log('\n💡 Test the new API endpoints:');
-    console.log('   Video: curl -X POST http://localhost:3001/api/download/video \\');
-    console.log('     -H "Content-Type: application/json" \\');
-    console.log('     -d \'{"url":"https://youtu.be/dQw4w9WgXcQ"}\' \\');
-    console.log('     --output video.mp4');
-    console.log('');
-    console.log('   Audio: curl -X POST http://localhost:3001/api/download/audio \\');
-    console.log('     -H "Content-Type: application/json" \\');
-    console.log('     -d \'{"url":"https://youtu.be/dQw4w9WgXcQ"}\' \\');
-    console.log('     --output audio.mp3');
+    console.log('\n💡 Test the API endpoints:');
+    console.log('   Health: https://lemolex-video-downloader-production.up.railway.app/api/health');
+    console.log('   Video: POST /api/download/video');
+    console.log('   Audio: POST /api/download/audio');
     console.log('');
     console.log('🎯 Perfect for Postman - just send the request and get the file!');
     console.log('');
