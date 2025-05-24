@@ -1,6 +1,6 @@
 /**
- * Enhanced Lemolex Video Downloader - Download Manager
- * Railway-compatible version with proper yt-dlp path detection
+ * Enhanced Lemolex Video Downloader - Download Manager with Cookie Support
+ * Railway-compatible version with proper yt-dlp path detection and cookie handling
  * Author: Billy
  */
 
@@ -27,12 +27,13 @@ class DownloadManager {
     this.downloads = new Map();
     this.ytDlpPath = this.findYtDlpPath();
     this.initializeDownloadDirectory();
+    this.initializeCookieDirectory();
     
     // Cleanup settings
     this.cleanupMaxAge = 30 * 60 * 1000; // 30 minutes
     this.maxTempFiles = 50; // Maximum temp files to keep
     
-    logSuccess('✅ Enhanced DownloadManager initialized');
+    logSuccess('✅ Enhanced DownloadManager with Cookie Support initialized');
     logInfo(`Using yt-dlp path: ${this.ytDlpPath}`);
   }
 
@@ -50,6 +51,110 @@ class DownloadManager {
       }
     }
     this.tempDownloadPath = tempPath;
+  }
+
+  /**
+   * Initialize cookie directory for storing cookies
+   */
+  initializeCookieDirectory() {
+    const cookiePath = path.join(os.tmpdir(), 'lemolex-cookies');
+    if (!fs.existsSync(cookiePath)) {
+      try {
+        fs.mkdirSync(cookiePath, { recursive: true });
+        logInfo(`Created cookie directory: ${cookiePath}`);
+      } catch (error) {
+        logError('Failed to create cookie directory:', error.message);
+      }
+    }
+    this.cookiePath = cookiePath;
+  }
+
+  /**
+   * Save cookies to a temporary file
+   */
+  saveCookies(cookies) {
+    try {
+      const cookieFile = path.join(this.cookiePath, `cookies_${Date.now()}.txt`);
+      
+      // Format cookies for Netscape format if it's JSON
+      let cookieContent;
+      if (typeof cookies === 'string') {
+        // Assume it's already in Netscape format
+        cookieContent = cookies;
+      } else if (Array.isArray(cookies) || typeof cookies === 'object') {
+        // Convert JSON cookies to Netscape format
+        cookieContent = this.convertJsonToNetscape(cookies);
+      } else {
+        throw new Error('Invalid cookie format');
+      }
+      
+      // Ensure proper header
+      if (!cookieContent.startsWith('# Netscape HTTP Cookie File') && 
+          !cookieContent.startsWith('# HTTP Cookie File')) {
+        cookieContent = '# Netscape HTTP Cookie File\n' + cookieContent;
+      }
+      
+      fs.writeFileSync(cookieFile, cookieContent);
+      logInfo(`Saved cookies to: ${cookieFile}`);
+      
+      // Clean up old cookie files (keep only recent ones)
+      this.cleanupOldCookies();
+      
+      return cookieFile;
+    } catch (error) {
+      logError('Failed to save cookies:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Convert JSON cookies to Netscape format
+   */
+  convertJsonToNetscape(cookies) {
+    let netscapeFormat = '# Netscape HTTP Cookie File\n';
+    
+    const cookieArray = Array.isArray(cookies) ? cookies : [cookies];
+    
+    for (const cookie of cookieArray) {
+      if (cookie.domain && cookie.name && cookie.value) {
+        const domain = cookie.domain;
+        const flag = domain.startsWith('.') ? 'TRUE' : 'FALSE';
+        const path = cookie.path || '/';
+        const secure = cookie.secure ? 'TRUE' : 'FALSE';
+        const expiration = cookie.expirationDate || '0';
+        const name = cookie.name;
+        const value = cookie.value;
+        
+        netscapeFormat += `${domain}\t${flag}\t${path}\t${secure}\t${expiration}\t${name}\t${value}\n`;
+      }
+    }
+    
+    return netscapeFormat;
+  }
+
+  /**
+   * Clean up old cookie files
+   */
+  cleanupOldCookies() {
+    try {
+      const files = fs.readdirSync(this.cookiePath);
+      const now = Date.now();
+      
+      for (const file of files) {
+        if (file.startsWith('cookies_') && file.endsWith('.txt')) {
+          const filePath = path.join(this.cookiePath, file);
+          const stats = fs.statSync(filePath);
+          
+          // Delete cookies older than 1 hour
+          if (now - stats.mtime.getTime() > 60 * 60 * 1000) {
+            fs.unlinkSync(filePath);
+            logInfo(`Cleaned up old cookie file: ${file}`);
+          }
+        }
+      }
+    } catch (error) {
+      logWarning('Failed to cleanup old cookies:', error.message);
+    }
   }
 
   /**
@@ -267,7 +372,7 @@ class DownloadManager {
   }
 
   /**
-   * Download and return file directly
+   * Download and return file directly with cookie support
    */
   async downloadAndReturnFile(options) {
     // Clean up old files before starting new download
@@ -283,7 +388,10 @@ class DownloadManager {
       url,
       format = 'video+audio',
       quality = 'best',
-      filename = null
+      filename = null,
+      cookies = null,
+      cookiesFromBrowser = null,
+      userAgent = null
     } = options;
 
     // Validate inputs
@@ -296,11 +404,11 @@ class DownloadManager {
     }
 
     const downloadId = uuidv4();
-    logInfo(`📥 Starting direct download: ${downloadId}`);
+    logInfo(`📥 Starting direct download with enhanced options: ${downloadId}`);
 
     try {
       // Get video info first to determine filename
-      const videoInfo = await this.getVideoInfo(url);
+      const videoInfo = await this.getVideoInfo(url, { cookies, cookiesFromBrowser, userAgent });
       
       // Generate filename
       const finalFilename = filename || this.generateFilename(videoInfo.title, format);
@@ -308,8 +416,12 @@ class DownloadManager {
 
       logInfo(`📁 Output file: ${outputPath}`);
 
-      // Build yt-dlp arguments
-      const args = this.buildYtDlpArgs(url, format, outputPath, quality);
+      // Build yt-dlp arguments with cookie support
+      const args = this.buildYtDlpArgs(url, format, outputPath, quality, {
+        cookies,
+        cookiesFromBrowser,
+        userAgent
+      });
       
       return new Promise((resolve, reject) => {
         logInfo(`Running: "${this.ytDlpPath}" ${args.join(' ')}`);
@@ -457,9 +569,11 @@ class DownloadManager {
   }
 
   /**
-   * Build yt-dlp command arguments for direct download
+   * Build yt-dlp command arguments for direct download with cookie support
    */
-  buildYtDlpArgs(url, format, outputPath, quality) {
+  buildYtDlpArgs(url, format, outputPath, quality, authOptions = {}) {
+    const { cookies, cookiesFromBrowser, userAgent } = authOptions;
+    
     const args = [
       '--no-warnings',
       '--force-overwrites',
@@ -467,9 +581,39 @@ class DownloadManager {
       '--no-abort-on-error',
       '--socket-timeout', '30',
       '--retries', '3',
-      '--fragment-retries', '3',
-      // Advanced YouTube bot detection bypass
-      '--user-agent', 'Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+      '--fragment-retries', '3'
+    ];
+
+    // Cookie authentication
+    if (cookies) {
+      if (typeof cookies === 'string' && fs.existsSync(cookies)) {
+        // It's a file path
+        args.push('--cookies', cookies);
+        logInfo('Using cookie file for authentication');
+      } else {
+        // It's cookie data, save to file
+        const cookieFile = this.saveCookies(cookies);
+        if (cookieFile) {
+          args.push('--cookies', cookieFile);
+          logInfo('Using provided cookies for authentication');
+        }
+      }
+    } else if (cookiesFromBrowser) {
+      args.push('--cookies-from-browser', cookiesFromBrowser);
+      logInfo(`Using cookies from browser: ${cookiesFromBrowser}`);
+    }
+
+    // User agent
+    if (userAgent) {
+      args.push('--user-agent', userAgent);
+      logInfo('Using custom user agent');
+    } else {
+      // Default to a realistic user agent
+      args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    }
+
+    // Enhanced bot detection bypass
+    args.push(
       '--referer', 'https://www.youtube.com/',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -479,14 +623,12 @@ class DownloadManager {
       '--add-header', 'Cache-Control:max-age=0',
       '--no-check-certificate',
       '--prefer-insecure',
-      // Use mobile API which is less restricted
-      '--extractor-args', 'youtube:player_client=android,web',
+      // Use different extractor arguments to avoid bot detection
+      '--extractor-args', 'youtube:player_client=mweb,web',
       // Add delay to seem more human-like
       '--sleep-requests', '1',
-      '--sleep-subtitles', '1',
-      // Use different format selection to avoid bot detection
-      '--format-sort', 'res,ext:mp4:m4a'
-    ];
+      '--sleep-subtitles', '1'
+    );
 
     // Output path
     args.push('-o', outputPath);
@@ -506,7 +648,7 @@ class DownloadManager {
         args.push('-f', 'bestaudio[ext=m4a]/bestaudio/best');
         args.push('--extract-audio');
         args.push('--audio-format', 'mp3');
-        args.push('--audio-quality', '128K'); // Lower quality to reduce detection
+        args.push('--audio-quality', '192K');
         break;
       
       case 'video+audio':
@@ -525,9 +667,9 @@ class DownloadManager {
   }
 
   /**
-   * Get video information without downloading
+   * Get video information without downloading, with authentication support
    */
-  async getVideoInfo(url) {
+  async getVideoInfo(url, authOptions = {}) {
     logInfo(`Getting video info for: ${url}`);
     
     if (!this.isValidYouTubeUrl(url)) {
@@ -539,17 +681,41 @@ class DownloadManager {
       throw new Error(`yt-dlp is not working at: ${this.ytDlpPath}`);
     }
 
+    const { cookies, cookiesFromBrowser, userAgent } = authOptions;
+
     return new Promise((resolve, reject) => {
       const args = [
         '--dump-json',
         '--no-warnings',
         '--no-check-certificates',
-        '--socket-timeout', '30',
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        '--referer', 'https://www.youtube.com/',
-        '--extractor-args', 'youtube:player_client=android',
-        url
+        '--socket-timeout', '30'
       ];
+
+      // Add authentication options
+      if (cookies) {
+        if (typeof cookies === 'string' && fs.existsSync(cookies)) {
+          args.push('--cookies', cookies);
+        } else {
+          const cookieFile = this.saveCookies(cookies);
+          if (cookieFile) {
+            args.push('--cookies', cookieFile);
+          }
+        }
+      } else if (cookiesFromBrowser) {
+        args.push('--cookies-from-browser', cookiesFromBrowser);
+      }
+
+      if (userAgent) {
+        args.push('--user-agent', userAgent);
+      } else {
+        args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      }
+
+      args.push(
+        '--referer', 'https://www.youtube.com/',
+        '--extractor-args', 'youtube:player_client=mweb,web',
+        url
+      );
 
       const process = spawn(this.ytDlpPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -625,6 +791,7 @@ class DownloadManager {
       ytDlpPath: this.ytDlpPath,
       ffmpegPath: ffmpegPath,
       tempDownloadPath: this.tempDownloadPath,
+      cookiePath: this.cookiePath,
       uptime: process.uptime(),
       memory: process.memoryUsage()
     };

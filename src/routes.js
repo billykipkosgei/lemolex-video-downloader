@@ -1,6 +1,6 @@
 /**
- * Enhanced Lemolex Video Downloader API Routes
- * Returns files directly with automatic cleanup
+ * Enhanced Lemolex Video Downloader API Routes with Cookie Support
+ * Returns files directly with automatic cleanup and authentication
  * Author: Billy
  */
 
@@ -47,7 +47,7 @@ router.get('/health', async (req, res) => {
     res.json({
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      server: 'Enhanced Lemolex Video Downloader API',
+      server: 'Enhanced Lemolex Video Downloader API with Cookie Support',
       version: require('../package.json').version,
       uptime: process.uptime(),
       system: {
@@ -70,7 +70,13 @@ router.get('/health', async (req, res) => {
         count: cleanupStats.fileCount,
         totalSize: formatFileSize(cleanupStats.totalSize),
         path: cleanupStats.tempPath
-      }
+      },
+      features: [
+        'Cookie authentication support',
+        'Browser cookie extraction',
+        'Enhanced bot detection bypass',
+        'Multiple authentication methods'
+      ]
     });
   } catch (error) {
     logError('Health check error:', error);
@@ -90,7 +96,7 @@ router.get('/docs', (req, res) => {
   res.json({
     name: 'Enhanced Lemolex Video Downloader API',
     version: require('../package.json').version,
-    description: 'YouTube Video & Audio Downloader API with File Return',
+    description: 'YouTube Video & Audio Downloader API with Cookie Authentication',
     author: 'Billy',
     baseUrl: `${req.protocol}://${req.get('host')}/api`,
     features: [
@@ -98,7 +104,10 @@ router.get('/docs', (req, res) => {
       '🗑️ Automatic temporary file cleanup',
       '⚡ Single request-response workflow',
       '🎵 Multiple format support (MP4, MP3)',
-      '🔧 Quality selection options'
+      '🔧 Quality selection options',
+      '🍪 Cookie authentication support',
+      '🌐 Browser cookie extraction',
+      '🤖 Enhanced bot detection bypass'
     ],
     endpoints: {
       health: {
@@ -116,7 +125,10 @@ router.get('/docs', (req, res) => {
         path: '/info',
         description: 'Get YouTube video information only',
         body: {
-          url: 'string (required) - YouTube video URL'
+          url: 'string (required) - YouTube video URL',
+          cookies: 'string|object (optional) - Cookies for authentication',
+          cookiesFromBrowser: 'string (optional) - Browser to extract cookies from (firefox, chrome, etc.)',
+          userAgent: 'string (optional) - Custom user agent string'
         }
       },
       downloadVideo: {
@@ -126,7 +138,10 @@ router.get('/docs', (req, res) => {
         body: {
           url: 'string (required) - YouTube video URL',
           quality: 'string (optional) - best|1080p|720p|480p|360p',
-          filename: 'string (optional) - Custom filename'
+          filename: 'string (optional) - Custom filename',
+          cookies: 'string|object (optional) - Cookies for authentication',
+          cookiesFromBrowser: 'string (optional) - Browser to extract cookies from',
+          userAgent: 'string (optional) - Custom user agent string'
         },
         response: 'Returns the video file directly'
       },
@@ -136,7 +151,10 @@ router.get('/docs', (req, res) => {
         description: 'Download audio and return MP3 file directly',
         body: {
           url: 'string (required) - YouTube video URL',
-          filename: 'string (optional) - Custom filename'
+          filename: 'string (optional) - Custom filename',
+          cookies: 'string|object (optional) - Cookies for authentication',
+          cookiesFromBrowser: 'string (optional) - Browser to extract cookies from',
+          userAgent: 'string (optional) - Custom user agent string'
         },
         response: 'Returns the audio file directly'
       },
@@ -148,7 +166,10 @@ router.get('/docs', (req, res) => {
           url: 'string (required) - YouTube video URL',
           format: 'string (optional) - video+audio|video-only|audio-only',
           quality: 'string (optional) - best|1080p|720p|480p|360p',
-          filename: 'string (optional) - Custom filename'
+          filename: 'string (optional) - Custom filename',
+          cookies: 'string|object (optional) - Cookies for authentication',
+          cookiesFromBrowser: 'string (optional) - Browser to extract cookies from',
+          userAgent: 'string (optional) - Custom user agent string'
         },
         response: 'Returns the downloaded file directly'
       },
@@ -157,6 +178,33 @@ router.get('/docs', (req, res) => {
         path: '/cleanup',
         description: 'Manually trigger cleanup of temporary files'
       }
+    },
+    authentication: {
+      description: 'Authentication options to bypass YouTube bot detection',
+      methods: [
+        {
+          name: 'cookies',
+          description: 'Provide cookies directly as string (Netscape format) or JSON object',
+          example: 'cookies.txt file content or JSON cookie object'
+        },
+        {
+          name: 'cookiesFromBrowser',
+          description: 'Extract cookies from browser automatically',
+          supportedBrowsers: ['firefox', 'chrome', 'chromium', 'edge', 'safari', 'opera'],
+          example: 'firefox'
+        },
+        {
+          name: 'userAgent',
+          description: 'Custom user agent string to match browser',
+          example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...'
+        }
+      ],
+      recommendations: [
+        'Use Firefox cookies for best compatibility',
+        'Export cookies from fresh browser session (within 30 minutes)',
+        'Navigate to the video page in browser before exporting cookies',
+        'Use incognito/private browsing to avoid cookie rotation'
+      ]
     },
     supportedFormats: [
       'video+audio - MP4 with audio (default)',
@@ -173,16 +221,21 @@ router.get('/docs', (req, res) => {
     examples: {
       curl: {
         getInfo: `curl -X POST ${req.protocol}://${req.get('host')}/api/info -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'`,
-        downloadVideo: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/video -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","quality":"720p"}' --output video.mp4`,
-        downloadAudio: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/audio -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}' --output audio.mp3`
+        downloadVideoWithCookies: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/video -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","cookiesFromBrowser":"firefox","quality":"720p"}' --output video.mp4`,
+        downloadAudioWithCookies: `curl -X POST ${req.protocol}://${req.get('host')}/api/download/audio -H "Content-Type: application/json" -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","cookiesFromBrowser":"chrome"}' --output audio.mp3`
       },
       postman: {
-        note: 'Set request type to POST, add JSON body with URL, and Postman will automatically download the returned file'
+        note: 'Set request type to POST, add JSON body with URL and authentication options, and Postman will automatically download the returned file',
+        exampleBody: {
+          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          cookiesFromBrowser: 'firefox',
+          quality: 'best'
+        }
       }
     },
     workflow: [
-      '1. Send POST request to /api/download/video or /api/download/audio',
-      '2. API downloads the video/audio',
+      '1. Send POST request to download endpoint with YouTube URL and authentication',
+      '2. API downloads the video/audio with proper authentication',
       '3. API returns the file directly in the response',
       '4. Old temporary files are automatically cleaned up'
     ]
@@ -190,17 +243,20 @@ router.get('/docs', (req, res) => {
 });
 
 /**
- * Get Video Information Only
+ * Get Video Information Only with Authentication
  * POST /api/info
  */
 router.post('/info', async (req, res) => {
   try {
-    const { url } = req.body;
+    const { url, cookies, cookiesFromBrowser, userAgent } = req.body;
 
     if (!url) {
       return res.status(400).json({
         error: 'URL is required',
-        example: { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }
+        example: { 
+          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          cookiesFromBrowser: 'firefox' // optional
+        }
       });
     }
 
@@ -215,8 +271,13 @@ router.post('/info', async (req, res) => {
       });
     }
 
-    logInfo(`📋 Getting info for: ${url}`);
-    const videoInfo = await downloadManager.getVideoInfo(url);
+    logInfo(`📋 Getting info for: ${url}${cookies || cookiesFromBrowser ? ' (with authentication)' : ''}`);
+    
+    const videoInfo = await downloadManager.getVideoInfo(url, {
+      cookies,
+      cookiesFromBrowser,
+      userAgent
+    });
 
     res.json({
       success: true,
@@ -229,25 +290,36 @@ router.post('/info', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      suggestion: error.message.includes('Sign in to confirm') ? 
+        'Try using cookiesFromBrowser parameter (e.g., "firefox") or provide cookies manually' : 
+        'Check if the URL is valid and accessible'
     });
   }
 });
 
 /**
- * Download Video and Return File
+ * Download Video and Return File with Authentication
  * POST /api/download/video
  */
 router.post('/download/video', async (req, res) => {
   try {
-    const { url, quality = 'best', filename } = req.body;
+    const { 
+      url, 
+      quality = 'best', 
+      filename,
+      cookies,
+      cookiesFromBrowser,
+      userAgent
+    } = req.body;
 
     if (!url) {
       return res.status(400).json({
         error: 'URL is required',
         example: {
           url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-          quality: 'best'
+          quality: 'best',
+          cookiesFromBrowser: 'firefox'
         }
       });
     }
@@ -266,13 +338,16 @@ router.post('/download/video', async (req, res) => {
       });
     }
 
-    logInfo(`📹 Downloading video: ${url} (${quality})`);
+    logInfo(`📹 Downloading video: ${url} (${quality})${cookies || cookiesFromBrowser ? ' with authentication' : ''}`);
 
     const result = await downloadManager.downloadAndReturnFile({
       url,
       format: 'video+audio',
       quality,
-      filename
+      filename,
+      cookies,
+      cookiesFromBrowser,
+      userAgent
     });
 
     if (result.success && fs.existsSync(result.filePath)) {
@@ -287,6 +362,7 @@ router.post('/download/video', async (req, res) => {
       res.setHeader('X-Video-Title', encodeURIComponent(result.videoInfo.title));
       res.setHeader('X-Video-Duration', result.videoInfo.duration);
       res.setHeader('X-Video-Uploader', encodeURIComponent(result.videoInfo.uploader));
+      res.setHeader('X-Authentication-Used', cookies || cookiesFromBrowser ? 'true' : 'false');
 
       // Stream the file
       const fileStream = fs.createReadStream(result.filePath);
@@ -313,24 +389,34 @@ router.post('/download/video', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      suggestion: error.message.includes('Sign in to confirm') ? 
+        'This video requires authentication. Try using cookiesFromBrowser parameter (e.g., "firefox") or provide cookies manually' : 
+        'Check if the URL is valid and accessible'
     });
   }
 });
 
 /**
- * Download Audio and Return File
+ * Download Audio and Return File with Authentication
  * POST /api/download/audio
  */
 router.post('/download/audio', async (req, res) => {
   try {
-    const { url, filename } = req.body;
+    const { 
+      url, 
+      filename,
+      cookies,
+      cookiesFromBrowser,
+      userAgent
+    } = req.body;
 
     if (!url) {
       return res.status(400).json({
         error: 'URL is required',
         example: {
-          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+          url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          cookiesFromBrowser: 'firefox'
         }
       });
     }
@@ -341,13 +427,16 @@ router.post('/download/audio', async (req, res) => {
       });
     }
 
-    logInfo(`🎵 Downloading audio: ${url}`);
+    logInfo(`🎵 Downloading audio: ${url}${cookies || cookiesFromBrowser ? ' with authentication' : ''}`);
 
     const result = await downloadManager.downloadAndReturnFile({
       url,
       format: 'audio-only',
       quality: 'best',
-      filename
+      filename,
+      cookies,
+      cookiesFromBrowser,
+      userAgent
     });
 
     if (result.success && fs.existsSync(result.filePath)) {
@@ -362,6 +451,7 @@ router.post('/download/audio', async (req, res) => {
       res.setHeader('X-Video-Title', encodeURIComponent(result.videoInfo.title));
       res.setHeader('X-Video-Duration', result.videoInfo.duration);
       res.setHeader('X-Video-Uploader', encodeURIComponent(result.videoInfo.uploader));
+      res.setHeader('X-Authentication-Used', cookies || cookiesFromBrowser ? 'true' : 'false');
 
       // Stream the file
       const fileStream = fs.createReadStream(result.filePath);
@@ -388,13 +478,16 @@ router.post('/download/audio', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      suggestion: error.message.includes('Sign in to confirm') ? 
+        'This video requires authentication. Try using cookiesFromBrowser parameter (e.g., "firefox") or provide cookies manually' : 
+        'Check if the URL is valid and accessible'
     });
   }
 });
 
 /**
- * Download with Custom Format Options
+ * Download with Custom Format Options and Authentication
  * POST /api/download
  */
 router.post('/download', async (req, res) => {
@@ -403,7 +496,10 @@ router.post('/download', async (req, res) => {
       url, 
       format = 'video+audio', 
       quality = 'best',
-      filename
+      filename,
+      cookies,
+      cookiesFromBrowser,
+      userAgent
     } = req.body;
 
     if (!url) {
@@ -412,7 +508,8 @@ router.post('/download', async (req, res) => {
         example: {
           url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
           format: 'video+audio',
-          quality: 'best'
+          quality: 'best',
+          cookiesFromBrowser: 'firefox'
         }
       });
     }
@@ -439,13 +536,16 @@ router.post('/download', async (req, res) => {
       });
     }
 
-    logInfo(`📥 Downloading: ${url} (${format}, ${quality})`);
+    logInfo(`📥 Downloading: ${url} (${format}, ${quality})${cookies || cookiesFromBrowser ? ' with authentication' : ''}`);
 
     const result = await downloadManager.downloadAndReturnFile({
       url,
       format,
       quality,
-      filename
+      filename,
+      cookies,
+      cookiesFromBrowser,
+      userAgent
     });
 
     if (result.success && fs.existsSync(result.filePath)) {
@@ -469,6 +569,7 @@ router.post('/download', async (req, res) => {
       res.setHeader('X-Video-Duration', result.videoInfo.duration);
       res.setHeader('X-Video-Uploader', encodeURIComponent(result.videoInfo.uploader));
       res.setHeader('X-Download-Format', format);
+      res.setHeader('X-Authentication-Used', cookies || cookiesFromBrowser ? 'true' : 'false');
 
       // Stream the file
       const fileStream = fs.createReadStream(result.filePath);
@@ -495,7 +596,10 @@ router.post('/download', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      suggestion: error.message.includes('Sign in to confirm') ? 
+        'This video requires authentication. Try using cookiesFromBrowser parameter (e.g., "firefox") or provide cookies manually' : 
+        'Check if the URL is valid and accessible'
     });
   }
 });
