@@ -2,7 +2,7 @@
 
 🚀 **Professional YouTube Video & Audio Downloader**
 
-A powerful, easy-to-use application for downloading YouTube videos and audio files. Built with Node.js and Express, featuring real-time progress tracking, multiple format support, and comprehensive error handling.
+xc 
 
 ## ✨ Features
 
@@ -26,7 +26,7 @@ A powerful, easy-to-use application for downloading YouTube videos and audio fil
 - **yt-dlp** - YouTube downloader tool
 - **ffmpeg** - Video processing (optional but recommended)
 
-### Installation
+### Setup Guide
 
 1. **Clone or download this project**
 ```bash
@@ -157,8 +157,8 @@ console.log('Progress:', status.data.progress + '%');
 - `url` (required) - YouTube video URL
 - `format` (optional) - `video+audio`, `video-only`, `audio-only` (default: `video+audio`)
 - `quality` (optional) - `best`, `1080p`, `720p`, `480p`, `360p` (default: `best`)
-- `outputPath` (optional) - Download directory path
-- `filename` (optional) - Custom filename
+- `outputPath` (optional) - Download directory path (Note: In the current API implementation, this parameter is not used. The API returns the file directly in the response instead of saving it to a specific path)
+- `filename` (optional) - Custom filename for the downloaded file
 
 **Response:**
 ```json
