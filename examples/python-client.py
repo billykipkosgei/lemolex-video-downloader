@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Lemolex Video Downloader - Python Client Example
+Lemolex Video Downloader - Python Client Example with Cookie Authentication
 Complete example showing how to integrate with the Lemolex Video Downloader using Python
+Supports cookie authentication for accessing restricted videos
 Author: Billy
 """
 
@@ -13,7 +14,7 @@ from datetime import datetime
 
 
 class LemolexAPI:
-    """Python client for Lemolex Video Downloader"""
+    """Python client for Lemolex Video Downloader with Cookie Authentication support"""
     
     def __init__(self, base_url: str = 'http://localhost:3001/api'):
         self.base_url = base_url.rstrip('/')
@@ -50,17 +51,30 @@ class LemolexAPI:
         """Get API documentation"""
         return self._make_request('GET', '/docs')
     
-    def get_video_info(self, url: str) -> Dict:
-        """Get video information"""
-        return self._make_request('POST', '/info', json={'url': url})
+    def get_video_info(self, url: str, cookies: Optional[str] = None, cookies_from_browser: Optional[str] = None, user_agent: Optional[str] = None) -> Dict:
+        """Get video information with optional authentication"""
+        data = {'url': url}
+        
+        # Add authentication options if provided
+        if cookies:
+            data['cookies'] = cookies
+        if cookies_from_browser:
+            data['cookiesFromBrowser'] = cookies_from_browser
+        if user_agent:
+            data['userAgent'] = user_agent
+            
+        return self._make_request('POST', '/info', json=data)
     
     def download_video(self, 
                       url: str,
                       format: str = 'video+audio',
                       quality: str = 'best',
                       output_path: Optional[str] = None,
-                      filename: Optional[str] = None) -> Dict:
-        """Start video download"""
+                      filename: Optional[str] = None,
+                      cookies: Optional[str] = None,
+                      cookies_from_browser: Optional[str] = None,
+                      user_agent: Optional[str] = None) -> Dict:
+        """Start video download with optional authentication"""
         data = {
             'url': url,
             'format': format,
@@ -71,6 +85,14 @@ class LemolexAPI:
             data['outputPath'] = output_path
         if filename:
             data['filename'] = filename
+        
+        # Add authentication options if provided
+        if cookies:
+            data['cookies'] = cookies
+        if cookies_from_browser:
+            data['cookiesFromBrowser'] = cookies_from_browser
+        if user_agent:
+            data['userAgent'] = user_agent
         
         return self._make_request('POST', '/download', json=data)
     
@@ -142,12 +164,24 @@ class LemolexAPI:
                              quality: str = 'best',
                              output_path: Optional[str] = None,
                              filename: Optional[str] = None,
+                             cookies: Optional[str] = None,
+                             cookies_from_browser: Optional[str] = None,
+                             user_agent: Optional[str] = None,
                              on_progress: Optional[Callable] = None) -> Dict:
         """Download video with real-time progress tracking"""
         print("Starting download with progress tracking...")
         
         # Start the download
-        download_result = self.download_video(url, format, quality, output_path, filename)
+        download_result = self.download_video(
+            url=url, 
+            format=format, 
+            quality=quality, 
+            output_path=output_path, 
+            filename=filename,
+            cookies=cookies,
+            cookies_from_browser=cookies_from_browser,
+            user_agent=user_agent
+        )
         download_id = download_result['data']['id']
         
         print(f"Download started with ID: {download_id}")
@@ -307,11 +341,51 @@ def example3_download_audio():
 def example4_batch_downloads():
     """Example 4: Multiple downloads in batch"""
     print("\n=== Example 4: Batch Downloads ===")
-{{ ... }}
+    
+    api = LemolexAPI()
+    
+    try:
+        # List of videos to download
+        urls = [
+            'https://www.youtube.com/watch?v=dQw4w9WgXcQ',  # Rick Astley
+            'https://www.youtube.com/watch?v=jNQXAC9IVRw'    # First YouTube video
+        ]
+        
+        print(f"Starting batch download of {len(urls)} videos...")
+        
+        # Start all downloads
+        download_ids = []
+        for i, url in enumerate(urls):
+            try:
+                print(f"Starting download {i+1}: {url}")
+                download = api.download_video(url=url, format='video+audio', quality='best')
+                download_id = download['data']['id']
+                download_ids.append(download_id)
+                print(f"Download {i+1} started with ID: {download_id}")
+            except Exception as e:
+                print(f"Error starting download {i+1}: {e}")
+        
+        # Monitor all downloads until completion
+        print("\nMonitoring all downloads...")
+        
+        while True:
+            completed = 0
+            for i, download_id in enumerate(download_ids):
+                try:
+                    status = api.get_download_status(download_id)
+                    data = status['data']
+                    
+                    print(f"Download {i+1}: {data['progress']:.1f}% - {data['status']}")
+                    
+                    if data['status'] in ['completed', 'failed', 'cancelled']:
+                        completed += 1
+                except Exception as e:
                     print(f"Error checking download {i}: {e}")
             
             if completed < len(download_ids):
                 time.sleep(3)
+            else:
+                break
         
         print("\n📊 Batch download completed!")
         
@@ -322,15 +396,91 @@ def example4_batch_downloads():
 def example5_manage_downloads():
     """Example 5: Download management operations"""
     print("\n=== Example 5: Manage Downloads ===")
-{{ ... }}
+    
+    api = LemolexAPI()
+    
+    try:
+        # Get all downloads
+        print("Getting all downloads...")
+        all_downloads = api.get_all_downloads()
+        downloads = all_downloads.get('data', [])
+        
+        print(f"Total downloads: {len(downloads)}")
+        
+        # Get statistics
+        print("\nGetting download statistics...")
+        stats = api.get_stats()
+        download_stats = stats['data']['downloads']
+        
+        print(f"Total: {download_stats.get('total', 0)}")
+        print(f"Completed: {download_stats.get('completed', 0)}")
+        print(f"Failed: {download_stats.get('failed', 0)}")
+        print(f"In Progress: {download_stats.get('downloading', 0)}")
+        
+        # Clear completed downloads if there are any
+        if download_stats.get('completed', 0) > 0:
+            print("\nClearing completed downloads...")
+            result = api.clear_completed()
+            print(f"Cleared {result.get('count', 0)} downloads")
         
     except Exception as e:
         print(f"Example 5 failed: {e}")
 
 
+def example6_authentication():
+    """Example 6: Using cookie authentication for restricted videos"""
+    print("\n=== Example 6: Cookie Authentication ===")
+    
+    api = LemolexAPI()
+    
+    try:
+        # Example URL that might require authentication
+        url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+        
+        # Method 1: Using cookies from browser
+        print("Method 1: Using cookies from browser")
+        print(f"Getting video info for: {url}")
+        
+        # Specify which browser to extract cookies from
+        # Options: 'firefox', 'chrome', 'chromium', 'edge', 'safari', 'opera'
+        browser = 'firefox'  # Change to your preferred browser
+        
+        try:
+            info = api.get_video_info(url, cookies_from_browser=browser)
+            print(f"Successfully authenticated using {browser} cookies!")
+            print(f"Video title: {info['data']['title']}")
+        except Exception as e:
+            print(f"Browser cookie authentication failed: {e}")
+            print("Try using a different browser or make sure you're logged in to YouTube")
+        
+        # Method 2: Custom user agent
+        print("\nMethod 2: Using custom user agent")
+        
+        custom_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        
+        try:
+            # Download with custom user agent
+            download_options = {
+                'url': url,
+                'format': 'audio-only',  # Use audio-only for faster download
+                'user_agent': custom_agent
+            }
+            
+            print("Starting download with custom user agent...")
+            result = api.download_with_progress(**download_options)
+            
+            print("✅ Download completed with custom user agent!")
+            print(f"File: {result.get('filename', 'Unknown')}")
+        except Exception as e:
+            print(f"Custom user agent download failed: {e}")
+        
+    except Exception as e:
+        print(f"Example 6 failed: {e}")
+
+
 def complete_workflow():
-    """Complete workflow example with all features"""
-    print("\n🚀 === Complete Workflow Example ===")
+    """Complete workflow example with all features including authentication"""
+    print("\n🚀 === Complete Workflow Example with Authentication ===")
     
     api = LemolexAPI()
     
@@ -359,12 +509,15 @@ def complete_workflow():
         if video.get('view_count'):
             print(f"   Views: {video['view_count']:,}")
         
-        # 3. Start download
-        print("\n3. Starting download...")
+        # 3. Start download with authentication
+        print("\n3. Starting download with authentication...")
         download_options = {
             'url': video_url,
             'format': 'video+audio',
-            'quality': 'best'
+            'quality': 'best',
+            # Uncomment one of these authentication methods if needed
+            # 'cookies_from_browser': 'firefox',  # Extract cookies from Firefox
+            # 'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
         
         download = api.download_video(**download_options)
@@ -446,6 +599,7 @@ if __name__ == "__main__":
         example3_download_audio()
         example4_batch_downloads()
         example5_manage_downloads()
+        example6_authentication()
         
         # Run the complete workflow
         complete_workflow()
