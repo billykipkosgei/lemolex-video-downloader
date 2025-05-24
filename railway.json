@@ -4,7 +4,7 @@
     "buildCommand": "npm install && npm run build"
   },
   "deploy": {
-    "startCommand": "node --max-old-space-size=2048 dist/server.js",
+    "startCommand": "node --max-old-space-size=2048 server.js",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE"
