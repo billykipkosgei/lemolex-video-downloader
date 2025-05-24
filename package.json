@@ -38,6 +38,7 @@
     "create-bin-dir": "mkdir -p bin",
     "download-ytdlp": "curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o bin/yt-dlp && chmod +x bin/yt-dlp || echo 'yt-dlp download failed, will try system installation'",
     "railway-build": "npm install && npm run install-system-deps && npm run install-ytdlp",
+    "build": "npm install && npm run install-system-deps && npm run install-ytdlp",
     "cleanup": "curl -X POST http://localhost:3001/api/cleanup",
     "test-video": "curl -X POST http://localhost:3001/api/download/video -H 'Content-Type: application/json' -d '{\"url\":\"https://youtu.be/dQw4w9WgXcQ\"}' --output test-video.mp4",
     "test-audio": "curl -X POST http://localhost:3001/api/download/audio -H 'Content-Type: application/json' -d '{\"url\":\"https://youtu.be/dQw4w9WgXcQ\"}' --output test-audio.mp3"
