@@ -1,12 +1,24 @@
 {
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install"
+    "buildCommand": "npm install && npm run build"
   },
   "deploy": {
-    "startCommand": "npm start",
+    "startCommand": "node --max-old-space-size=2048 dist/server.js",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE"
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "${PORT}",
+    "MAX_DOWNLOADS": "10",
+    "DOWNLOAD_TIMEOUT": "300",
+    "TEMP_DIR": "/tmp/lemolex-downloads"
+  },
+  "resources": {
+    "cpu": "1",
+    "memory": "2048",
+    "disk": "10240"
   }
 }
