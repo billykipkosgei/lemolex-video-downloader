@@ -580,8 +580,8 @@ class DownloadManager {
       '--ignore-errors',
       '--no-abort-on-error',
       '--socket-timeout', '30',
-      '--retries', '3',
-      '--fragment-retries', '3'
+      '--retries', '5',
+      '--fragment-retries', '5'
     ];
 
     // Cookie authentication
@@ -601,6 +601,20 @@ class DownloadManager {
     } else if (cookiesFromBrowser) {
       args.push('--cookies-from-browser', cookiesFromBrowser);
       logInfo(`Using cookies from browser: ${cookiesFromBrowser}`);
+    } else {
+      // If no cookies provided, use advanced bypass techniques for Railway environment
+      logInfo('No cookies provided, using advanced bypass techniques');
+      
+      // Add these arguments to bypass YouTube bot detection
+      args.push(
+        '--mark-watched',
+        '--no-playlist',
+        '--embed-metadata',
+        '--embed-thumbnail',
+        '--geo-bypass',
+        '--geo-bypass-country', 'US',
+        '--no-check-certificates'
+      );
     }
 
     // User agent
@@ -624,7 +638,7 @@ class DownloadManager {
       '--no-check-certificate',
       '--prefer-insecure',
       // Use different extractor arguments to avoid bot detection
-      '--extractor-args', 'youtube:player_client=mweb,web',
+      '--extractor-args', 'youtube:player_client=android,web',
       // Add delay to seem more human-like
       '--sleep-requests', '1',
       '--sleep-subtitles', '1'
@@ -688,7 +702,9 @@ class DownloadManager {
         '--dump-json',
         '--no-warnings',
         '--no-check-certificates',
-        '--socket-timeout', '30'
+        '--socket-timeout', '30',
+        '--retries', '5',
+        '--fragment-retries', '5'
       ];
 
       // Add authentication options
@@ -703,6 +719,17 @@ class DownloadManager {
         }
       } else if (cookiesFromBrowser) {
         args.push('--cookies-from-browser', cookiesFromBrowser);
+      } else {
+        // If no cookies provided, use advanced bypass techniques for Railway environment
+        logInfo('No cookies provided for video info, using advanced bypass techniques');
+        
+        // Add these arguments to bypass YouTube bot detection
+        args.push(
+          '--mark-watched',
+          '--no-playlist',
+          '--geo-bypass',
+          '--geo-bypass-country', 'US'
+        );
       }
 
       if (userAgent) {
@@ -713,7 +740,13 @@ class DownloadManager {
 
       args.push(
         '--referer', 'https://www.youtube.com/',
-        '--extractor-args', 'youtube:player_client=mweb,web',
+        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        '--add-header', 'Sec-Fetch-Mode:navigate',
+        '--add-header', 'Sec-Fetch-Site:same-origin',
+        '--add-header', 'Sec-Fetch-User:?1',
+        '--add-header', 'Cache-Control:max-age=0',
+        '--extractor-args', 'youtube:player_client=android,web',
         url
       );
 
