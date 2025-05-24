@@ -1,6 +1,6 @@
 /**
- * Enhanced Lemolex Video Downloader - Download Manager with Cookie Authentication
- * Railway-compatible version with cookie-based bot detection bypass
+ * Railway-Optimized Lemolex Video Downloader - Download Manager
+ * Designed specifically for Railway environment without browser dependencies
  * Author: Billy
  */
 
@@ -27,13 +27,56 @@ class DownloadManager {
     this.downloads = new Map();
     this.ytDlpPath = this.findYtDlpPath();
     this.initializeDownloadDirectory();
-    this.initializeCookieDirectory();
     
     // Cleanup settings
     this.cleanupMaxAge = 30 * 60 * 1000; // 30 minutes
-    this.maxTempFiles = 50; // Maximum temp files to keep
+    this.maxTempFiles = 50;
     
-    logSuccess('✅ Enhanced DownloadManager with Cookie Authentication initialized');
+    // Rotating user agents and configurations
+    this.configs = [
+      {
+        name: 'Android YouTube App',
+        userAgent: 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
+        clientName: '3',
+        clientVersion: '19.09.37',
+        referer: 'https://m.youtube.com/',
+        extractorArgs: 'youtube:player_client=android'
+      },
+      {
+        name: 'iOS YouTube App',
+        userAgent: 'com.google.ios.youtube/19.09.3 (iPhone14,2; U; CPU iOS 16_6 like Mac OS X)',
+        clientName: '5',
+        clientVersion: '19.09.3',
+        referer: 'https://m.youtube.com/',
+        extractorArgs: 'youtube:player_client=ios'
+      },
+      {
+        name: 'Android TV',
+        userAgent: 'Mozilla/5.0 (Linux; Android 10; AndroidTV) AppleWebKit/537.36',
+        clientName: '7',
+        clientVersion: '2.0',
+        referer: 'https://www.youtube.com/tv',
+        extractorArgs: 'youtube:player_client=androidtv'
+      },
+      {
+        name: 'Web Embedded',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        clientName: '56',
+        clientVersion: '1.0',
+        referer: 'https://www.youtube.com/',
+        extractorArgs: 'youtube:player_client=webEmbed'
+      },
+      {
+        name: 'Mobile Web',
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+        clientName: '2',
+        clientVersion: '2.0',
+        referer: 'https://m.youtube.com/',
+        extractorArgs: 'youtube:player_client=mweb'
+      }
+    ];
+    
+    logSuccess('✅ Railway-Optimized DownloadManager initialized');
     logInfo(`Using yt-dlp path: ${this.ytDlpPath}`);
   }
 
@@ -54,35 +97,15 @@ class DownloadManager {
   }
 
   /**
-   * Initialize cookie directory
-   */
-  initializeCookieDirectory() {
-    const cookiePath = path.join(os.tmpdir(), 'lemolex-cookies');
-    if (!fs.existsSync(cookiePath)) {
-      try {
-        fs.mkdirSync(cookiePath, { recursive: true });
-        logInfo(`Created cookie directory: ${cookiePath}`);
-      } catch (error) {
-        logError('Failed to create cookie directory:', error.message);
-      }
-    }
-    this.cookiePath = cookiePath;
-  }
-
-  /**
-   * Find yt-dlp executable path - Railway/Docker compatible
+   * Find yt-dlp executable path - Railway compatible
    */
   findYtDlpPath() {
-    logInfo(`🔍 Looking for yt-dlp...`);
-    
     const possiblePaths = [
       '/app/bin/yt-dlp',
       path.join(__dirname, '../bin/yt-dlp'),
       path.join(process.cwd(), 'bin/yt-dlp'),
-      './bin/yt-dlp',
       '/usr/local/bin/yt-dlp',
       '/usr/bin/yt-dlp',
-      '/bin/yt-dlp',
       'yt-dlp'
     ];
 
@@ -98,7 +121,7 @@ class DownloadManager {
             } catch (execError) {
               try {
                 fs.chmodSync(ytdlpPath, 0o755);
-                logSuccess(`✅ Made executable and using: ${ytdlpPath}`);
+                logSuccess(`✅ Made executable: ${ytdlpPath}`);
                 return ytdlpPath;
               } catch (chmodError) {
                 continue;
@@ -173,31 +196,6 @@ class DownloadManager {
   }
 
   /**
-   * Clean up old cookie files
-   */
-  cleanupOldCookies() {
-    try {
-      const files = fs.readdirSync(this.cookiePath);
-      const now = Date.now();
-      
-      for (const file of files) {
-        if (file.startsWith('cookies_') && file.endsWith('.txt')) {
-          const filePath = path.join(this.cookiePath, file);
-          const stats = fs.statSync(filePath);
-          
-          // Delete cookies older than 1 hour
-          if (now - stats.mtime.getTime() > 60 * 60 * 1000) {
-            fs.unlinkSync(filePath);
-            logInfo(`Cleaned up old cookie file: ${file}`);
-          }
-        }
-      }
-    } catch (error) {
-      logWarning('Failed to cleanup old cookies:', error.message);
-    }
-  }
-
-  /**
    * Check if yt-dlp is available and working
    */
   async checkYtDlpAvailable() {
@@ -238,12 +236,11 @@ class DownloadManager {
   }
 
   /**
-   * Download and return file directly with cookie authentication
+   * Download and return file directly with advanced Railway-optimized bypass
    */
   async downloadAndReturnFile(options) {
     // Clean up old files
     await this.cleanupTempFiles();
-    this.cleanupOldCookies();
 
     // Check if yt-dlp is available
     const isAvailable = await this.checkYtDlpAvailable();
@@ -255,9 +252,7 @@ class DownloadManager {
       url,
       format = 'video+audio',
       quality = 'best',
-      filename = null,
-      cookiesFromBrowser = null,
-      cookies = null
+      filename = null
     } = options;
 
     if (!url) {
@@ -269,11 +264,11 @@ class DownloadManager {
     }
 
     const downloadId = uuidv4();
-    logInfo(`📥 Starting download with cookie authentication: ${downloadId}`);
+    logInfo(`📥 Starting Railway-optimized download: ${downloadId}`);
 
     try {
       // Get video info first
-      const videoInfo = await this.getVideoInfo(url, { cookiesFromBrowser, cookies });
+      const videoInfo = await this.getVideoInfo(url);
       
       // Generate filename
       const finalFilename = filename || this.generateFilename(videoInfo.title, format);
@@ -281,38 +276,61 @@ class DownloadManager {
 
       logInfo(`📁 Output file: ${outputPath}`);
 
-      // Try different strategies with cookie authentication
-      const strategies = [
-        () => this.downloadWithCookieAuth(url, format, outputPath, quality, { cookiesFromBrowser, cookies, strategy: 'firefox' }),
-        () => this.downloadWithCookieAuth(url, format, outputPath, quality, { cookiesFromBrowser: 'chrome', strategy: 'chrome' }),
-        () => this.downloadWithCookieAuth(url, format, outputPath, quality, { cookiesFromBrowser: 'edge', strategy: 'edge' }),
-        () => this.downloadWithAdvancedBypass(url, format, outputPath, quality)
-      ];
-
+      // Try different configurations in order
       let lastError = null;
 
-      for (let i = 0; i < strategies.length; i++) {
+      for (let i = 0; i < this.configs.length; i++) {
+        const config = this.configs[i];
+        
         try {
-          logInfo(`Trying authentication strategy ${i + 1}/${strategies.length}`);
-          const result = await strategies[i]();
+          logInfo(`Trying configuration ${i + 1}/${this.configs.length}: ${config.name}`);
+          
+          const result = await this.downloadWithConfig(url, format, outputPath, quality, config);
           
           if (result.success) {
-            logSuccess(`✅ Download successful with strategy ${i + 1}`);
-            return result;
+            logSuccess(`✅ Download successful with ${config.name}`);
+            return {
+              ...result,
+              videoInfo: {
+                title: videoInfo.title,
+                duration: videoInfo.duration,
+                uploader: videoInfo.uploader
+              }
+            };
           }
         } catch (error) {
-          logWarning(`Strategy ${i + 1} failed: ${error.message}`);
+          logWarning(`${config.name} failed: ${error.message}`);
           lastError = error;
           
-          // Add delay between attempts
-          if (i < strategies.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
+          // Add progressive delay between attempts
+          if (i < this.configs.length - 1) {
+            const delay = (i + 1) * 2000; // 2s, 4s, 6s, 8s, 10s
+            logInfo(`Waiting ${delay/1000}s before next attempt...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
           continue;
         }
       }
 
-      throw lastError || new Error('All download strategies failed');
+      // Final fallback attempt with basic settings
+      try {
+        logInfo('Trying final fallback method...');
+        const result = await this.downloadWithBasicFallback(url, format, outputPath, quality);
+        if (result.success) {
+          return {
+            ...result,
+            videoInfo: {
+              title: videoInfo.title,
+              duration: videoInfo.duration,
+              uploader: videoInfo.uploader
+            }
+          };
+        }
+      } catch (error) {
+        lastError = error;
+      }
+
+      throw lastError || new Error('All download methods failed');
 
     } catch (error) {
       logError('Download error:', error);
@@ -321,11 +339,9 @@ class DownloadManager {
   }
 
   /**
-   * Download with cookie authentication
+   * Download with specific configuration
    */
-  async downloadWithCookieAuth(url, format, outputPath, quality, authOptions) {
-    const { cookiesFromBrowser, cookies, strategy } = authOptions;
-    
+  async downloadWithConfig(url, format, outputPath, quality, config) {
     const args = [
       '--no-warnings',
       '--force-overwrites',
@@ -333,49 +349,41 @@ class DownloadManager {
       '--no-abort-on-error',
       '--socket-timeout', '30',
       '--retries', '3',
-      '--fragment-retries', '3'
+      '--fragment-retries', '3',
+      '--retry-sleep', '2'
     ];
 
-    // Add cookie authentication
-    if (cookiesFromBrowser) {
-      args.push('--cookies-from-browser', cookiesFromBrowser);
-      logInfo(`Using cookies from ${cookiesFromBrowser} browser`);
-    } else if (cookies) {
-      // Save cookies to temporary file
-      const cookieFile = path.join(this.cookiePath, `cookies_${Date.now()}.txt`);
-      fs.writeFileSync(cookieFile, cookies);
-      args.push('--cookies', cookieFile);
-      logInfo('Using provided cookies');
-    }
-
-    // Browser-specific optimizations
-    if (strategy === 'firefox') {
-      args.push(
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
-        '--referer', 'https://www.youtube.com/',
-        '--add-header', 'Accept-Language:en-US,en;q=0.5'
-      );
-    } else if (strategy === 'chrome') {
-      args.push(
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-        '--referer', 'https://www.youtube.com/',
-        '--add-header', 'Sec-Ch-Ua:"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"'
-      );
-    } else if (strategy === 'edge') {
-      args.push(
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
-        '--referer', 'https://www.youtube.com/'
-      );
-    }
-
-    // Additional bypass options
+    // Configuration-specific settings
     args.push(
-      '--extractor-args', 'youtube:player_client=web,android',
+      '--extractor-args', config.extractorArgs,
+      '--user-agent', config.userAgent,
+      '--referer', config.referer
+    );
+
+    // Add client headers if available
+    if (config.clientName) {
+      args.push('--add-header', `X-YouTube-Client-Name:${config.clientName}`);
+    }
+    if (config.clientVersion) {
+      args.push('--add-header', `X-YouTube-Client-Version:${config.clientVersion}`);
+    }
+
+    // Additional bypass settings
+    args.push(
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Accept-Encoding:gzip, deflate',
       '--geo-bypass',
       '--geo-bypass-country', 'US',
+      '--prefer-insecure',
+      '--no-check-certificates',
+      '--age-limit', '0'
+    );
+
+    // Add human-like behavior
+    args.push(
       '--sleep-requests', '1',
       '--sleep-interval', '1',
-      '--max-sleep-interval', '2'
+      '--max-sleep-interval', '3'
     );
 
     // Output settings
@@ -389,27 +397,25 @@ class DownloadManager {
   }
 
   /**
-   * Download with advanced bypass (fallback)
+   * Basic fallback download method
    */
-  async downloadWithAdvancedBypass(url, format, outputPath, quality) {
+  async downloadWithBasicFallback(url, format, outputPath, quality) {
     const args = [
       '--no-warnings',
       '--force-overwrites',
       '--ignore-errors',
       '--no-abort-on-error',
-      '--socket-timeout', '30',
-      '--retries', '5',
-      '--fragment-retries', '5',
+      '--socket-timeout', '60',
+      '--retries', '10',
+      '--fragment-retries', '10',
+      '--retry-sleep', '3',
       
-      // Try to bypass without cookies
-      '--extractor-args', 'youtube:player_client=android,web',
-      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
-      '--referer', 'https://m.youtube.com/',
-      '--geo-bypass',
-      '--geo-bypass-country', 'US',
-      '--prefer-insecure',
+      // Very basic settings
+      '--user-agent', 'yt-dlp/2025.05.22',
       '--no-check-certificates',
-      '--age-limit', '0',
+      '--prefer-insecure',
+      '--geo-bypass',
+      '--force-ipv4',
       
       '-o', outputPath
     ];
@@ -439,11 +445,11 @@ class DownloadManager {
       case 'video+audio':
       default:
         if (ffmpegPath) {
-          args.push('-f', 'best[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best');
+          args.push('-f', 'best[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best');
           args.push('--merge-output-format', 'mp4');
           args.push('--ffmpeg-location', ffmpegPath);
         } else {
-          args.push('-f', 'best[height<=720][ext=mp4]/best');
+          args.push('-f', 'best[height<=480][ext=mp4]/best');
         }
         break;
     }
@@ -476,7 +482,6 @@ class DownloadManager {
 
       process.on('close', (code) => {
         if (code === 0) {
-          // Find the actual downloaded file
           const downloadedFile = this.findDownloadedFile(this.tempDownloadPath, path.basename(outputPath));
           
           if (downloadedFile && fs.existsSync(downloadedFile)) {
@@ -486,12 +491,7 @@ class DownloadManager {
               success: true,
               filePath: downloadedFile,
               filename: path.basename(downloadedFile),
-              size: fs.statSync(downloadedFile).size,
-              videoInfo: {
-                title: 'Downloaded Video',
-                duration: 0,
-                uploader: 'Unknown'
-              }
+              size: fs.statSync(downloadedFile).size
             });
           } else {
             reject(new Error('Downloaded file not found'));
@@ -505,11 +505,11 @@ class DownloadManager {
         reject(new Error(`Download process error: ${error.message}`));
       });
 
-      // Timeout after 10 minutes
+      // Timeout after 15 minutes for larger files
       setTimeout(() => {
         try { process.kill(); } catch (e) {}
-        reject(new Error('Download timeout'));
-      }, 600000);
+        reject(new Error('Download timeout after 15 minutes'));
+      }, 900000);
     });
   }
 
@@ -520,14 +520,19 @@ class DownloadManager {
     try {
       const files = fs.readdirSync(directory);
       
-      // First, try exact match
       if (files.includes(expectedFilename)) {
         return path.join(directory, expectedFilename);
       }
 
-      // Then, find the most recent file
+      // Find most recent file
       const allFiles = files
-        .filter(file => fs.statSync(path.join(directory, file)).isFile())
+        .filter(file => {
+          try {
+            return fs.statSync(path.join(directory, file)).isFile();
+          } catch {
+            return false;
+          }
+        })
         .map(file => ({
           file,
           mtime: fs.statSync(path.join(directory, file)).mtime
@@ -546,10 +551,10 @@ class DownloadManager {
   }
 
   /**
-   * Generate filename based on video title and format
+   * Generate filename
    */
   generateFilename(title, format) {
-    const sanitizedTitle = sanitize(title || 'video').substring(0, 100);
+    const sanitizedTitle = sanitize(title || 'video').substring(0, 80);
     const extension = this.getFileExtension(format);
     const timestamp = Date.now();
     
@@ -569,42 +574,65 @@ class DownloadManager {
   }
 
   /**
-   * Get video information with cookie authentication
+   * Get video information with Railway-optimized method
    */
-  async getVideoInfo(url, authOptions = {}) {
+  async getVideoInfo(url) {
     logInfo(`Getting video info for: ${url}`);
     
     if (!this.isValidYouTubeUrl(url)) {
       throw new Error('Invalid YouTube URL provided');
     }
 
-    const { cookiesFromBrowser, cookies } = authOptions;
+    // Try different client methods for info extraction
+    const infoConfigs = [
+      { client: 'android', userAgent: 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip' },
+      { client: 'ios', userAgent: 'com.google.ios.youtube/19.09.3 (iPhone14,2; U; CPU iOS 16_6 like Mac OS X)' },
+      { client: 'web', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    ];
 
+    for (const config of infoConfigs) {
+      try {
+        const info = await this.extractVideoInfo(url, config);
+        if (info) {
+          return info;
+        }
+      } catch (error) {
+        logWarning(`Info extraction with ${config.client} failed: ${error.message}`);
+        continue;
+      }
+    }
+
+    // Fallback with basic info
+    return {
+      id: this.extractVideoId(url) || 'unknown',
+      title: 'YouTube Video',
+      duration: 0,
+      thumbnail: null,
+      uploader: 'Unknown',
+      view_count: 0,
+      upload_date: '',
+      description: 'No description available',
+      webpage_url: url
+    };
+  }
+
+  /**
+   * Extract video info with specific client
+   */
+  async extractVideoInfo(url, config) {
     return new Promise((resolve, reject) => {
       const args = [
         '--dump-json',
         '--no-warnings',
         '--no-check-certificates',
         '--socket-timeout', '30',
-        '--retries', '3'
-      ];
-
-      // Add cookie authentication for info extraction
-      if (cookiesFromBrowser) {
-        args.push('--cookies-from-browser', cookiesFromBrowser);
-      } else if (cookies) {
-        const cookieFile = path.join(this.cookiePath, `info_cookies_${Date.now()}.txt`);
-        fs.writeFileSync(cookieFile, cookies);
-        args.push('--cookies', cookieFile);
-      }
-
-      args.push(
-        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-        '--referer', 'https://www.youtube.com/',
+        '--retries', '2',
+        '--extractor-args', `youtube:player_client=${config.client}`,
+        '--user-agent', config.userAgent,
         '--geo-bypass',
         '--geo-bypass-country', 'US',
         url
-      );
+      ];
 
       const process = spawn(this.ytDlpPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -624,19 +652,19 @@ class DownloadManager {
       });
 
       process.on('close', (code) => {
-        if (code === 0) {
+        if (code === 0 && stdout) {
           try {
             const info = JSON.parse(stdout);
             resolve({
               id: info.id,
-              title: info.title || 'Unknown Video',
+              title: info.title || 'YouTube Video',
               duration: info.duration || 0,
               thumbnail: info.thumbnail,
               uploader: info.uploader || 'Unknown',
-              view_count: info.view_count,
-              upload_date: info.upload_date,
-              description: (info.description?.substring(0, 500) || 'No description') + '...',
-              webpage_url: info.webpage_url
+              view_count: info.view_count || 0,
+              upload_date: info.upload_date || '',
+              description: (info.description?.substring(0, 300) || 'No description') + '...',
+              webpage_url: info.webpage_url || url
             });
           } catch (error) {
             reject(new Error('Failed to parse video information'));
@@ -647,14 +675,31 @@ class DownloadManager {
       });
 
       process.on('error', (error) => {
-        reject(new Error(`yt-dlp process error: ${error.message}`));
+        reject(new Error(`Info extraction process error: ${error.message}`));
       });
 
       setTimeout(() => {
         try { process.kill(); } catch (e) {}
-        reject(new Error('Video info request timed out'));
-      }, 60000);
+        reject(new Error('Info extraction timeout'));
+      }, 30000);
     });
+  }
+
+  /**
+   * Extract video ID from URL
+   */
+  extractVideoId(url) {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    return null;
   }
 
   /**
@@ -680,7 +725,6 @@ class DownloadManager {
       ytDlpPath: this.ytDlpPath,
       ffmpegPath: ffmpegPath,
       tempDownloadPath: this.tempDownloadPath,
-      cookiePath: this.cookiePath,
       uptime: process.uptime(),
       memory: process.memoryUsage()
     };
