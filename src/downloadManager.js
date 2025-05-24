@@ -1,6 +1,6 @@
 /**
- * Fallback Download Manager with Working URLs
- * Quick fix for YouTube bot detection issues
+ * Ultimate Bot Bypass Solution for Railway
+ * Combines multiple techniques for maximum success rate
  * Author: Billy
  */
 
@@ -12,368 +12,206 @@ const { v4: uuidv4 } = require('uuid');
 const sanitize = require('sanitize-filename');
 const { logInfo, logError, logSuccess, logWarning } = require('./utils');
 
-// Try to get ffmpeg path
-let ffmpegPath;
-try {
-  ffmpegPath = require('ffmpeg-static');
-  logInfo(`Found ffmpeg at: ${ffmpegPath}`);
-} catch (error) {
-  logWarning('ffmpeg-static not available, will use system ffmpeg');
-  ffmpegPath = null;
-}
-
-class DownloadManager {
+class UltimateDownloadManager {
   constructor() {
-    this.downloads = new Map();
     this.ytDlpPath = this.findYtDlpPath();
+    this.tempDownloadPath = path.join(os.tmpdir(), 'lemolex-downloads');
     this.initializeDownloadDirectory();
     
-    // Cleanup settings
-    this.cleanupMaxAge = 30 * 60 * 1000; // 30 minutes
-    this.maxTempFiles = 50;
-    
-    // Working YouTube URLs that bypass bot detection
-    this.workingUrls = [
-      'https://www.youtube.com/watch?v=jNQXAC9IVRw', // First YouTube video
-      'https://www.youtube.com/watch?v=wDchsz8nmbo', // YouTube test video
-      'https://www.youtube.com/watch?v=BaW_jenozKc', // First HD video
-      'https://www.youtube.com/watch?v=8UVNT4wvIGY', // Short video
-      'https://www.youtube.com/watch?v=L_jWHffIx5E'  // Early Smosh
+    // Bot bypass configurations
+    this.bypassConfigs = [
+      {
+        name: 'Mobile Android Bypass',
+        args: [
+          '--extractor-args', 'youtube:player_client=android,web',
+          '--user-agent', 'com.google.android.youtube/18.11.34 (Linux; U; Android 11; en_US)',
+          '--add-header', 'X-YouTube-Client-Name:3',
+          '--add-header', 'X-YouTube-Client-Version:18.11.34',
+          '--sleep-requests', '2',
+          '--sleep-interval', '1'
+        ]
+      },
+      {
+        name: 'iOS Safari Bypass',
+        args: [
+          '--extractor-args', 'youtube:player_client=ios,mweb',
+          '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+          '--add-header', 'X-YouTube-Client-Name:5',
+          '--add-header', 'X-YouTube-Client-Version:18.11.34',
+          '--sleep-requests', '3'
+        ]
+      },
+      {
+        name: 'TV Client Bypass',
+        args: [
+          '--extractor-args', 'youtube:player_client=tv_embedded',
+          '--user-agent', 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/4.0 Chrome/76.0.3809.146 TV Safari/537.36',
+          '--add-header', 'X-YouTube-Client-Name:85',
+          '--sleep-requests', '4'
+        ]
+      },
+      {
+        name: 'Web Embed Bypass',
+        args: [
+          '--extractor-args', 'youtube:player_client=web_embedded_player',
+          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          '--referer', 'https://www.google.com/',
+          '--sleep-requests', '1'
+        ]
+      },
+      {
+        name: 'Age Bypass Method',
+        args: [
+          '--extractor-args', 'youtube:player_client=android_creator',
+          '--user-agent', 'com.google.android.apps.youtube.creator/22.30.100 (Linux; U; Android 11; en_US) gzip',
+          '--add-header', 'X-YouTube-Client-Name:14',
+          '--age-limit', '0',
+          '--sleep-requests', '2'
+        ]
+      }
     ];
-    
-    logSuccess('✅ Fallback DownloadManager initialized with working URLs');
-    logInfo(`Using yt-dlp path: ${this.ytDlpPath}`);
+
+    // Proxy rotation (you can add proxy services here)
+    this.proxyList = [
+      // Add proxy URLs here if available
+      // 'http://proxy1:port',
+      // 'http://proxy2:port'
+    ];
+
+    logSuccess('✅ Ultimate Download Manager with Bot Bypass initialized');
   }
 
-  /**
-   * Initialize temporary download directory
-   */
   initializeDownloadDirectory() {
-    const tempPath = path.join(os.tmpdir(), 'lemolex-downloads');
-    if (!fs.existsSync(tempPath)) {
+    if (!fs.existsSync(this.tempDownloadPath)) {
       try {
-        fs.mkdirSync(tempPath, { recursive: true });
-        logInfo(`Created temporary download directory: ${tempPath}`);
+        fs.mkdirSync(this.tempDownloadPath, { recursive: true });
+        logInfo(`Created temp directory: ${this.tempDownloadPath}`);
       } catch (error) {
-        logError('Failed to create temporary download directory:', error.message);
+        logError('Failed to create temp directory:', error.message);
       }
     }
-    this.tempDownloadPath = tempPath;
   }
 
-  /**
-   * Find yt-dlp executable path
-   */
   findYtDlpPath() {
-    const possiblePaths = [
-      '/app/bin/yt-dlp',
-      path.join(__dirname, '../bin/yt-dlp'),
-      path.join(process.cwd(), 'bin/yt-dlp'),
-      '/usr/local/bin/yt-dlp',
-      '/usr/bin/yt-dlp',
-      'yt-dlp'
-    ];
-
-    for (const ytdlpPath of possiblePaths) {
+    const paths = ['/app/bin/yt-dlp', 'yt-dlp', '/usr/local/bin/yt-dlp'];
+    for (const path of paths) {
       try {
-        if (fs.existsSync(ytdlpPath)) {
-          const stats = fs.statSync(ytdlpPath);
-          if (stats.size > 0) {
-            try {
-              fs.accessSync(ytdlpPath, fs.constants.X_OK);
-              logSuccess(`✅ Found executable yt-dlp at: ${ytdlpPath}`);
-              return ytdlpPath;
-            } catch (execError) {
-              try {
-                fs.chmodSync(ytdlpPath, 0o755);
-                logSuccess(`✅ Made executable: ${ytdlpPath}`);
-                return ytdlpPath;
-              } catch (chmodError) {
-                continue;
-              }
-            }
-          }
-        }
-      } catch (error) {
-        continue;
-      }
+        if (fs.existsSync(path)) return path;
+      } catch (e) {}
     }
-
-    return '/app/bin/yt-dlp'; // Railway fallback
+    return 'yt-dlp';
   }
 
-  /**
-   * Clean up old temporary files
-   */
-  async cleanupTempFiles() {
-    try {
-      const files = fs.readdirSync(this.tempDownloadPath);
-      const now = Date.now();
-      let cleaned = 0;
-
-      const fileStats = files.map(file => {
-        const filePath = path.join(this.tempDownloadPath, file);
-        try {
-          const stats = fs.statSync(filePath);
-          return { file, filePath, mtime: stats.mtime.getTime() };
-        } catch (error) {
-          return null;
-        }
-      }).filter(Boolean);
-
-      fileStats.sort((a, b) => a.mtime - b.mtime);
-
-      for (const { file, filePath, mtime } of fileStats) {
-        if (now - mtime > this.cleanupMaxAge) {
-          try {
-            fs.unlinkSync(filePath);
-            logInfo(`🗑️ Cleaned old file: ${file}`);
-            cleaned++;
-          } catch (error) {
-            logWarning(`Failed to delete ${file}: ${error.message}`);
-          }
-        }
-      }
-
-      if (cleaned > 0) {
-        logSuccess(`✅ Cleaned up ${cleaned} temporary files`);
-      }
-
-      return cleaned;
-    } catch (error) {
-      logError('Cleanup error:', error.message);
-      return 0;
-    }
-  }
-
-  /**
-   * Check if yt-dlp is available and working
-   */
-  async checkYtDlpAvailable() {
-    return new Promise((resolve) => {
-      try {
-        const process = spawn(this.ytDlpPath, ['--version'], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: false,
-          windowsHide: true
-        });
-
-        let hasOutput = false;
-
-        process.stdout.on('data', (data) => {
-          const version = data.toString().trim();
-          logSuccess(`✅ yt-dlp version: ${version}`);
-          hasOutput = true;
-        });
-
-        process.on('close', (code) => {
-          resolve(code === 0 && hasOutput);
-        });
-
-        process.on('error', (error) => {
-          logError(`yt-dlp execution failed: ${error.message}`);
-          resolve(false);
-        });
-
-        setTimeout(() => {
-          try { process.kill(); } catch (e) {}
-          resolve(false);
-        }, 10000);
-
-      } catch (error) {
-        resolve(false);
-      }
-    });
-  }
-
-  /**
-   * Download and return file directly with fallback strategy
-   */
   async downloadAndReturnFile(options) {
-    await this.cleanupTempFiles();
+    const { url, format = 'video+audio', quality = 'best', filename = null } = options;
 
-    const isAvailable = await this.checkYtDlpAvailable();
-    if (!isAvailable) {
-      throw new Error(`yt-dlp is not installed or not accessible at: ${this.ytDlpPath}`);
+    if (!url || !this.isValidYouTubeUrl(url)) {
+      throw new Error('Invalid YouTube URL');
     }
 
-    const {
-      url,
-      format = 'video+audio',
-      quality = 'best',
-      filename = null
-    } = options;
+    logInfo(`🚀 Starting ultimate bypass download for: ${url}`);
 
-    if (!url) {
-      throw new Error('URL is required');
-    }
-
-    const downloadId = uuidv4();
-    logInfo(`📥 Starting download with fallback strategy: ${downloadId}`);
-
-    // If the provided URL doesn't work, try our working URLs
-    const urlsToTry = this.isValidYouTubeUrl(url) ? [url, ...this.workingUrls] : this.workingUrls;
-
-    for (let i = 0; i < urlsToTry.length; i++) {
-      const testUrl = urlsToTry[i];
+    // Step 1: Try with different bypass configurations
+    for (let i = 0; i < this.bypassConfigs.length; i++) {
+      const config = this.bypassConfigs[i];
       
       try {
-        logInfo(`Trying URL ${i + 1}/${urlsToTry.length}: ${testUrl}`);
+        logInfo(`Trying ${config.name} (${i + 1}/${this.bypassConfigs.length})`);
         
-        const result = await this.attemptDownload(testUrl, format, quality, filename);
+        const result = await this.attemptDownloadWithConfig(url, format, quality, filename, config);
         
         if (result.success) {
-          if (i === 0) {
-            logSuccess(`✅ Original URL worked: ${testUrl}`);
-          } else {
-            logSuccess(`✅ Fallback URL worked: ${testUrl}`);
-            logWarning(`Note: Used fallback video instead of requested URL`);
-          }
+          logSuccess(`✅ SUCCESS with ${config.name}!`);
           return result;
         }
       } catch (error) {
-        logWarning(`URL ${i + 1} failed: ${error.message}`);
+        logWarning(`${config.name} failed: ${error.message}`);
         
-        // Add delay between attempts
-        if (i < urlsToTry.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
+        // Progressive delay between attempts
+        if (i < this.bypassConfigs.length - 1) {
+          const delay = (i + 1) * 3000; // 3s, 6s, 9s, 12s, 15s
+          logInfo(`Waiting ${delay/1000}s before next attempt...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
-        continue;
+      }
+    }
+
+    // Step 2: Try with quality fallback
+    if (quality !== 'worst') {
+      try {
+        logInfo('Trying with lowest quality as last resort...');
+        return await this.attemptDownloadWithConfig(url, format, 'worst', filename, this.bypassConfigs[0]);
+      } catch (error) {
+        logWarning('Lowest quality attempt failed');
       }
     }
 
-    throw new Error('All URLs failed - YouTube bot detection is very aggressive today');
+    throw new Error('All bypass methods failed - YouTube bot detection is very strong today');
   }
 
-  /**
-   * Attempt download with specific URL
-   */
-  async attemptDownload(url, format, quality, filename) {
-    try {
-      // Get video info first
-      const videoInfo = await this.getVideoInfo(url);
-      
-      // Generate filename
-      const finalFilename = filename || this.generateFilename(videoInfo.title, format);
-      const outputPath = path.join(this.tempDownloadPath, finalFilename);
+  async attemptDownloadWithConfig(url, format, quality, filename, config) {
+    const videoInfo = await this.getVideoInfo(url);
+    const finalFilename = filename || this.generateFilename(videoInfo.title, format);
+    const outputPath = path.join(this.tempDownloadPath, finalFilename);
 
-      logInfo(`📁 Output file: ${outputPath}`);
-
-      // Try different download strategies
-      const strategies = [
-        () => this.downloadWithBasicSettings(url, format, outputPath),
-        () => this.downloadWithMobileClient(url, format, outputPath),
-        () => this.downloadWithOldestMethod(url, format, outputPath)
-      ];
-
-      for (let i = 0; i < strategies.length; i++) {
-        try {
-          logInfo(`Trying download strategy ${i + 1}/${strategies.length}`);
-          
-          const result = await strategies[i]();
-          
-          if (result.success) {
-            return {
-              ...result,
-              videoInfo: {
-                title: videoInfo.title,
-                duration: videoInfo.duration,
-                uploader: videoInfo.uploader
-              }
-            };
-          }
-        } catch (error) {
-          logWarning(`Strategy ${i + 1} failed: ${error.message}`);
-          continue;
-        }
-      }
-
-      throw new Error('All download strategies failed for this URL');
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  /**
-   * Download with basic settings (fastest)
-   */
-  async downloadWithBasicSettings(url, format, outputPath) {
-    const args = [
+    const baseArgs = [
       '--no-warnings',
       '--force-overwrites',
       '--ignore-errors',
-      '--socket-timeout', '30',
-      '--retries', '3',
-      '-o', outputPath
+      '--no-abort-on-error',
+      '--socket-timeout', '45',
+      '--retries', '5',
+      '--fragment-retries', '10',
+      '--retry-sleep', '3'
     ];
 
-    if (format === 'audio-only') {
-      args.push('-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3');
-    } else {
-      args.push('-f', 'worst[height<=360]/worst');
-    }
+    // Add config-specific args
+    const args = [...baseArgs, ...config.args];
 
-    args.push(url);
-
-    return this.executeDownload(args, outputPath);
-  }
-
-  /**
-   * Download with mobile client emulation
-   */
-  async downloadWithMobileClient(url, format, outputPath) {
-    const args = [
-      '--no-warnings',
-      '--force-overwrites',
-      '--ignore-errors',
-      '--socket-timeout', '30',
-      '--retries', '3',
-      '--extractor-args', 'youtube:player_client=android',
-      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
-      '--referer', 'https://m.youtube.com/',
-      '-o', outputPath
-    ];
-
-    if (format === 'audio-only') {
-      args.push('-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3');
-    } else {
-      args.push('-f', 'worst[height<=240]/worst');
-    }
-
-    args.push(url);
-
-    return this.executeDownload(args, outputPath);
-  }
-
-  /**
-   * Download with oldest/simplest method
-   */
-  async downloadWithOldestMethod(url, format, outputPath) {
-    const args = [
-      '--no-warnings',
-      '--force-overwrites',
-      '--ignore-errors',
-      '--no-check-certificates',
+    // Add anti-detection measures
+    args.push(
+      '--geo-bypass',
+      '--geo-bypass-country', 'US',
       '--prefer-insecure',
-      '-o', outputPath
-    ];
+      '--no-check-certificates',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+      '--add-header', 'Accept-Encoding:gzip, deflate',
+      '--add-header', 'DNT:1',
+      '--add-header', 'Upgrade-Insecure-Requests:1'
+    );
 
+    // Random delays to appear more human
+    args.push(
+      '--min-sleep-interval', '1',
+      '--max-sleep-interval', '5'
+    );
+
+    // Format-specific settings with quality fallback
     if (format === 'audio-only') {
-      args.push('--extract-audio', '--audio-format', 'mp3');
+      args.push(
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best[height<=360]/worst',
+        '--extract-audio',
+        '--audio-format', 'mp3',
+        '--audio-quality', '128K'
+      );
+    } else if (format === 'video-only') {
+      if (quality === 'worst') {
+        args.push('-f', 'worst[height<=240]/worst');
+      } else {
+        args.push('-f', `best[height<=${this.getMaxHeight(quality)}]/best[height<=480]/worst`);
+      }
+    } else { // video+audio
+      if (quality === 'worst') {
+        args.push('-f', 'worst[height<=240]/worst');
+      } else {
+        args.push('-f', `best[height<=${this.getMaxHeight(quality)}]/best[height<=360]/worst`);
+      }
     }
 
-    args.push('-f', 'worst/best');
-    args.push(url);
+    args.push('-o', outputPath, url);
 
-    return this.executeDownload(args, outputPath);
-  }
-
-  /**
-   * Execute download with given arguments
-   */
-  async executeDownload(args, outputPath) {
     return new Promise((resolve, reject) => {
-      logInfo(`Running: "${this.ytDlpPath}" ${args.join(' ')}`);
+      logInfo(`Executing: ${this.ytDlpPath} ${args.join(' ')}`);
       
       const process = spawn(this.ytDlpPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -383,10 +221,17 @@ class DownloadManager {
       });
 
       let stderr = '';
-      let stdout = '';
+      let lastProgress = '';
 
       process.stdout.on('data', (data) => {
-        stdout += data.toString();
+        const output = data.toString();
+        if (output.includes('%')) {
+          const match = output.match(/(\d+\.?\d*)%/);
+          if (match && match[1] !== lastProgress) {
+            lastProgress = match[1];
+            logInfo(`Download progress: ${lastProgress}%`);
+          }
+        }
       });
 
       process.stderr.on('data', (data) => {
@@ -395,257 +240,175 @@ class DownloadManager {
 
       process.on('close', (code) => {
         if (code === 0) {
-          const downloadedFile = this.findDownloadedFile(this.tempDownloadPath, path.basename(outputPath));
+          const downloadedFile = this.findDownloadedFile(outputPath);
           
           if (downloadedFile && fs.existsSync(downloadedFile)) {
-            logSuccess(`✅ Download completed: ${path.basename(downloadedFile)}`);
-            
             resolve({
               success: true,
               filePath: downloadedFile,
               filename: path.basename(downloadedFile),
-              size: fs.statSync(downloadedFile).size
+              size: fs.statSync(downloadedFile).size,
+              videoInfo
             });
           } else {
-            reject(new Error('Downloaded file not found'));
+            reject(new Error('File not found after download'));
           }
         } else {
-          reject(new Error(stderr || `Process exited with code ${code}`));
+          const errorMsg = stderr.includes('Sign in to confirm') ? 
+            'Bot detection triggered' : 
+            (stderr || `Process exited with code ${code}`);
+          reject(new Error(errorMsg));
         }
       });
 
       process.on('error', (error) => {
-        reject(new Error(`Download process error: ${error.message}`));
+        reject(new Error(`Process error: ${error.message}`));
       });
 
-      // Timeout after 5 minutes
+      // Timeout based on format (audio is faster)
+      const timeout = format === 'audio-only' ? 300000 : 600000; // 5min for audio, 10min for video
       setTimeout(() => {
         try { process.kill(); } catch (e) {}
         reject(new Error('Download timeout'));
-      }, 300000);
+      }, timeout);
     });
   }
 
-  /**
-   * Find the downloaded file
-   */
-  findDownloadedFile(directory, expectedFilename) {
+  getMaxHeight(quality) {
+    const heights = {
+      'best': '720',
+      '1080p': '1080',
+      '720p': '720',
+      '480p': '480',
+      '360p': '360',
+      'worst': '240'
+    };
+    return heights[quality] || '480';
+  }
+
+  async getVideoInfo(url) {
+    // Simplified info extraction to avoid extra bot detection
+    const videoId = this.extractVideoId(url);
+    return {
+      id: videoId || 'unknown',
+      title: `YouTube Video ${videoId || 'Unknown'}`,
+      duration: 0,
+      uploader: 'Unknown',
+      view_count: 0,
+      upload_date: '',
+      description: 'Video downloaded successfully',
+      webpage_url: url
+    };
+  }
+
+  findDownloadedFile(expectedPath) {
     try {
-      const files = fs.readdirSync(directory);
-      
-      if (files.includes(expectedFilename)) {
-        return path.join(directory, expectedFilename);
+      // Check exact path first
+      if (fs.existsSync(expectedPath)) {
+        return expectedPath;
       }
 
+      // Look for similar files in directory
+      const dir = path.dirname(expectedPath);
+      const files = fs.readdirSync(dir);
+      
       // Find most recent file
-      const allFiles = files
-        .filter(file => {
-          try {
-            return fs.statSync(path.join(directory, file)).isFile();
-          } catch {
-            return false;
-          }
-        })
+      const mostRecent = files
+        .filter(file => fs.statSync(path.join(dir, file)).isFile())
         .map(file => ({
           file,
-          mtime: fs.statSync(path.join(directory, file)).mtime
+          path: path.join(dir, file),
+          mtime: fs.statSync(path.join(dir, file)).mtime
         }))
-        .sort((a, b) => b.mtime - a.mtime);
+        .sort((a, b) => b.mtime - a.mtime)[0];
 
-      if (allFiles.length > 0) {
-        return path.join(directory, allFiles[0].file);
-      }
-
-      return null;
+      return mostRecent ? mostRecent.path : null;
     } catch (error) {
-      logError('Error finding downloaded file:', error);
       return null;
     }
   }
 
-  /**
-   * Generate filename
-   */
   generateFilename(title, format) {
     const sanitizedTitle = sanitize(title || 'video').substring(0, 50);
     const extension = format === 'audio-only' ? 'mp3' : 'mp4';
     const timestamp = Date.now();
-    
     return `${sanitizedTitle}_${timestamp}.${extension}`;
   }
 
-  /**
-   * Get video information with fallback
-   */
-  async getVideoInfo(url) {
-    logInfo(`Getting video info for: ${url}`);
-    
-    if (!this.isValidYouTubeUrl(url)) {
-      throw new Error('Invalid YouTube URL provided');
-    }
+  extractVideoId(url) {
+    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : null;
+  }
 
-    // Try simple info extraction
-    const videoId = this.extractVideoId(url);
-    
-    return new Promise((resolve, reject) => {
-      const args = [
-        '--dump-json',
-        '--no-warnings',
-        '--no-check-certificates',
-        '--socket-timeout', '10',
-        '--retries', '1',
-        url
-      ];
+  isValidYouTubeUrl(url) {
+    return /^https?:\/\/(www\.)?(youtube\.com\/(watch\?v=|shorts\/)|youtu\.be\/)/.test(url);
+  }
 
-      const process = spawn(this.ytDlpPath, args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: false,
-        windowsHide: true
-      });
+  async cleanupTempFiles() {
+    try {
+      const files = fs.readdirSync(this.tempDownloadPath);
+      const now = Date.now();
+      let cleaned = 0;
 
-      let stdout = '';
-      let stderr = '';
-
-      process.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      process.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      process.on('close', (code) => {
-        if (code === 0 && stdout) {
-          try {
-            const info = JSON.parse(stdout);
-            resolve({
-              id: info.id || videoId,
-              title: info.title || 'YouTube Video',
-              duration: info.duration || 0,
-              thumbnail: info.thumbnail,
-              uploader: info.uploader || 'Unknown',
-              view_count: info.view_count || 0,
-              upload_date: info.upload_date || '',
-              description: (info.description?.substring(0, 200) || 'No description') + '...',
-              webpage_url: info.webpage_url || url
-            });
-          } catch (error) {
-            // Fallback to basic info
-            resolve({
-              id: videoId || 'unknown',
-              title: 'YouTube Video',
-              duration: 0,
-              thumbnail: null,
-              uploader: 'Unknown',
-              view_count: 0,
-              upload_date: '',
-              description: 'Video information unavailable',
-              webpage_url: url
-            });
+      for (const file of files) {
+        const filePath = path.join(this.tempDownloadPath, file);
+        try {
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtime.getTime() > 30 * 60 * 1000) { // 30 minutes
+            fs.unlinkSync(filePath);
+            cleaned++;
           }
-        } else {
-          // Fallback to basic info
-          resolve({
-            id: videoId || 'unknown',
-            title: 'YouTube Video',
-            duration: 0,
-            thumbnail: null,
-            uploader: 'Unknown',
-            view_count: 0,
-            upload_date: '',
-            description: 'Video information unavailable',
-            webpage_url: url
-          });
-        }
+        } catch (e) {}
+      }
+
+      if (cleaned > 0) {
+        logSuccess(`🗑️ Cleaned ${cleaned} old files`);
+      }
+
+      return cleaned;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  async checkYtDlpAvailable() {
+    return new Promise((resolve) => {
+      const process = spawn(this.ytDlpPath, ['--version'], { stdio: ['pipe', 'pipe', 'pipe'] });
+      
+      let hasOutput = false;
+      process.stdout.on('data', (data) => {
+        logSuccess(`✅ yt-dlp version: ${data.toString().trim()}`);
+        hasOutput = true;
       });
 
-      process.on('error', (error) => {
-        // Fallback to basic info
-        resolve({
-          id: videoId || 'unknown',
-          title: 'YouTube Video',
-          duration: 0,
-          thumbnail: null,
-          uploader: 'Unknown',
-          view_count: 0,
-          upload_date: '',
-          description: 'Video information unavailable',
-          webpage_url: url
-        });
-      });
-
+      process.on('close', (code) => resolve(code === 0 && hasOutput));
+      process.on('error', () => resolve(false));
+      
       setTimeout(() => {
         try { process.kill(); } catch (e) {}
-        // Fallback to basic info
-        resolve({
-          id: videoId || 'unknown',
-          title: 'YouTube Video',
-          duration: 0,
-          thumbnail: null,
-          uploader: 'Unknown',
-          view_count: 0,
-          upload_date: '',
-          description: 'Video information unavailable',
-          webpage_url: url
-        });
-      }, 15000);
+        resolve(false);
+      }, 5000);
     });
   }
 
-  /**
-   * Extract video ID from URL
-   */
-  extractVideoId(url) {
-    const patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/
-    ];
-    
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) {
-        return match[1];
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Validate YouTube URL
-   */
-  isValidYouTubeUrl(url) {
-    const patterns = [
-      /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)/,
-      /^https?:\/\/(www\.)?youtube\.com\/shorts\//
-    ];
-    return patterns.some(pattern => pattern.test(url));
-  }
-
-  /**
-   * Get system information
-   */
   getSystemInfo() {
     return {
       platform: os.platform(),
       arch: os.arch(),
       nodeVersion: process.version,
       ytDlpPath: this.ytDlpPath,
-      ffmpegPath: ffmpegPath,
       tempDownloadPath: this.tempDownloadPath,
       uptime: process.uptime(),
       memory: process.memoryUsage()
     };
   }
 
-  /**
-   * Get cleanup statistics
-   */
   getCleanupStats() {
     try {
       const files = fs.readdirSync(this.tempDownloadPath);
       const totalSize = files.reduce((size, file) => {
         try {
-          const filePath = path.join(this.tempDownloadPath, file);
-          return size + fs.statSync(filePath).size;
+          return size + fs.statSync(path.join(this.tempDownloadPath, file)).size;
         } catch {
           return size;
         }
@@ -653,19 +416,14 @@ class DownloadManager {
 
       return {
         fileCount: files.length,
-        totalSize: totalSize,
+        totalSize,
         totalSizeMB: Math.round(totalSize / 1024 / 1024),
         tempPath: this.tempDownloadPath
       };
     } catch {
-      return {
-        fileCount: 0,
-        totalSize: 0,
-        totalSizeMB: 0,
-        tempPath: this.tempDownloadPath
-      };
+      return { fileCount: 0, totalSize: 0, totalSizeMB: 0, tempPath: this.tempDownloadPath };
     }
   }
 }
 
-module.exports = DownloadManager;
+module.exports = UltimateDownloadManager;
