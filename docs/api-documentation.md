@@ -674,5 +674,5 @@ curl -X DELETE http://localhost:3001/api/download/DOWNLOAD_ID
 
 ---
 
-*This documentation is for Lemolex Video Downloader API v1.0.0*  
-*Last updated: 2025-05-23*
+*This documentation is for Lemolex Video Downloader API v1.0.1*  
+*Last updated: 2025-05-24*
