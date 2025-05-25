@@ -372,6 +372,10 @@ class DownloadManager {
       '--ignore-errors',
       '--socket-timeout', '30',
       '--retries', '3',
+      '--sleep-requests', '1',
+      '--sleep-interval', '5',
+      '--max-sleep-interval', '10',
+      '--extractor-retries', '5',
       '-o', outputPath
     ];
 
@@ -383,6 +387,17 @@ class DownloadManager {
     // Add user agent if provided
     if (this.currentDownloadOptions?.userAgent) {
       args.push('--user-agent', this.currentDownloadOptions.userAgent);
+    } else {
+      // Use a common browser user agent
+      args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    }
+    
+    // Add geo-bypass to avoid region restrictions
+    args.push('--geo-bypass');
+    
+    // Add proxy if running on Railway (detected by environment variable)
+    if (process.env.RAILWAY_STATIC_URL) {
+      args.push('--proxy', '');
     }
 
     if (format === 'audio-only') {
@@ -406,8 +421,15 @@ class DownloadManager {
       '--ignore-errors',
       '--socket-timeout', '30',
       '--retries', '3',
+      '--sleep-requests', '1',
+      '--sleep-interval', '5',
+      '--max-sleep-interval', '10',
+      '--extractor-retries', '5',
       '--extractor-args', 'youtube:player_client=android',
       '--referer', 'https://m.youtube.com/',
+      '--add-header', 'Origin:https://m.youtube.com',
+      '--add-header', 'X-YouTube-Client-Name:2',
+      '--add-header', 'X-YouTube-Client-Version:2.20210721.00.00',
       '-o', outputPath
     ];
 
@@ -421,6 +443,14 @@ class DownloadManager {
       args.push('--user-agent', this.currentDownloadOptions.userAgent);
     } else {
       args.push('--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip');
+    }
+
+    // Add geo-bypass to avoid region restrictions
+    args.push('--geo-bypass');
+    
+    // Add proxy if running on Railway (detected by environment variable)
+    if (process.env.RAILWAY_STATIC_URL) {
+      args.push('--proxy', '');
     }
 
     if (format === 'audio-only') {
@@ -444,6 +474,13 @@ class DownloadManager {
       '--ignore-errors',
       '--no-check-certificates',
       '--prefer-insecure',
+      '--sleep-requests', '2',
+      '--sleep-interval', '10',
+      '--max-sleep-interval', '15',
+      '--extractor-retries', '10',
+      '--mark-watched',  // This can help avoid bot detection
+      '--no-playlist',
+      '--restrict-filenames',
       '-o', outputPath
     ];
 
@@ -451,17 +488,31 @@ class DownloadManager {
     if (this.currentDownloadOptions?.cookieArgs?.length > 0) {
       args.push(...this.currentDownloadOptions.cookieArgs);
     }
-
-    // Add user agent if provided
-    if (this.currentDownloadOptions?.userAgent) {
-      args.push('--user-agent', this.currentDownloadOptions.userAgent);
+    
+    // Add a random user agent to appear more like a real browser
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'
+    ];
+    const randomUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+    args.push('--user-agent', randomUserAgent);
+    
+    // Add geo-bypass to avoid region restrictions
+    args.push('--geo-bypass');
+    
+    // Add proxy if running on Railway (detected by environment variable)
+    if (process.env.RAILWAY_STATIC_URL) {
+      args.push('--proxy', '');
     }
 
     if (format === 'audio-only') {
-      args.push('--extract-audio', '--audio-format', 'mp3');
+      args.push('-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3');
+    } else {
+      args.push('-f', 'worst/best');
     }
 
-    args.push('-f', 'worst/best');
     args.push(url);
 
     return this.executeDownload(args, outputPath);
