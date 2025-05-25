@@ -14,6 +14,32 @@ require('dotenv').config();
 const routes = require('./src/routes');
 const { logInfo, logError, logSuccess } = require('./src/utils');
 
+// Setup cookies for Railway deployment
+const setupCookies = () => {
+  try {
+    // Create cookies directory if it doesn't exist
+    const cookiesDir = path.join(__dirname, 'cookies');
+    if (!fs.existsSync(cookiesDir)) {
+      fs.mkdirSync(cookiesDir, { recursive: true });
+      logInfo('Created cookies directory');
+    }
+    
+    // Write cookie content from environment variable to file
+    if (process.env.YOUTUBE_COOKIES) {
+      const cookieFile = path.join(cookiesDir, 'youtube_cookies.txt');
+      fs.writeFileSync(cookieFile, process.env.YOUTUBE_COOKIES);
+      logSuccess('✅ YouTube cookies loaded from environment variable');
+    } else {
+      logInfo('No YouTube cookies found in environment variables');
+    }
+  } catch (error) {
+    logError('Error setting up cookies:', error);
+  }
+};
+
+// Initialize cookies
+setupCookies();
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 const HOST = '0.0.0.0'; // Important for Railway - bind to all interfaces

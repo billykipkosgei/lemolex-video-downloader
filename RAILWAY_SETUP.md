@@ -55,6 +55,7 @@ web: npm start
 ### Railway Variables
 - `PORT`: Application port (default: 3000)
 - `NODE_ENV`: Environment (production/development)
+- `YOUTUBE_COOKIES`: Content of your YouTube cookies file (for authentication)
 
 ## File Management
 
@@ -97,6 +98,31 @@ Content-Type: application/json
     "format": "video+audio"  // Options: video, audio, video+audio
 }
 ```
+
+## Setting Up YouTube Cookies
+
+To bypass YouTube's bot detection and download videos that require authentication, you need to set up cookies in Railway:
+
+1. **Export cookies from your browser**:
+   - Install a browser extension like "Get cookies.txt" or "Cookie Quick Manager"
+   - Visit YouTube and log in to your account
+   - Export cookies in Netscape format
+
+2. **Add cookies to Railway environment variables**:
+   - Go to your Railway project dashboard
+   - Navigate to the "Variables" tab
+   - Add a new variable called `YOUTUBE_COOKIES`
+   - Paste the entire content of your cookie file as the value
+
+3. **Using cookies in API requests**:
+   ```json
+   {
+     "url": "https://www.youtube.com/watch?v=YOUR_VIDEO_ID"
+   }
+   ```
+   The server will automatically use the cookies from the environment variable
+
+> **Note**: Keep your cookies secure and do not share them. Cookies contain sensitive authentication information.
 
 ## Troubleshooting
 
