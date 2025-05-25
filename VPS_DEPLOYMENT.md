@@ -92,7 +92,7 @@ mkdir -p /opt/lemolex-downloader
 cd /opt/lemolex-downloader
 
 # Clone the repository
-git clone https://github.com/billykipkosgei/lemolex-video-downloader.git .
+
 
 # Install dependencies
 npm install
