@@ -91,7 +91,12 @@ class DownloadManager {
       'https://www.youtube.com/watch?v=wDchsz8nmbo', // YouTube test video
       'https://www.youtube.com/watch?v=BaW_jenozKc', // First HD video
       'https://www.youtube.com/watch?v=8UVNT4wvIGY', // Short video
-      'https://www.youtube.com/watch?v=L_jWHffIx5E'  // Early Smosh
+      'https://www.youtube.com/watch?v=L_jWHffIx5E', // Early Smosh
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ', // Very popular video
+      'https://www.youtube.com/watch?v=9bZkp7q19f0', // High-view count video
+      'https://www.youtube.com/watch?v=kJQP7kiw5Fk', // Popular music video
+      'https://www.youtube.com/watch?v=pRpeEdMmmQ0', // Recent popular video
+      'https://www.youtube.com/watch?v=hT_nvWreIhg'  // Another popular music video
     ];
     
     logSuccess('✅ Fallback DownloadManager initialized with working URLs');
