@@ -1,8 +1,8 @@
 # Lemolex Video Downloader
 
-🚀 **Professional YouTube Video & Audio Downloader**
+🚀 **Professional YouTube Video & Audio Downloader API**
 
-xc 
+> **IMPORTANT UPDATE**: This application is now optimized for Digital Ocean deployment for better YouTube bot detection bypass and higher success rates! See the [Digital Ocean Deployment Guide](VPS_DEPLOYMENT.md) for step-by-step instructions.
 
 ## ✨ Features
 
@@ -16,6 +16,7 @@ xc
 - 📋 **Download History** - Track all download activities
 - 🛡️ **Error Handling** - Comprehensive error reporting
 - 📖 **API Documentation** - Built-in interactive documentation
+- 🍪 **Cookie Authentication** - Bypass YouTube bot detection with cookies
 
 ## 🛠️ Quick Start
 
@@ -25,6 +26,32 @@ xc
 - **npm** (v6.0.0 or higher)
 - **yt-dlp** - YouTube downloader tool
 - **ffmpeg** - Video processing (optional but recommended)
+
+## 🍪 Using Cookie Authentication
+
+To bypass YouTube's bot detection and download videos that require authentication:
+
+1. **Prepare your cookies file**:
+   - Export cookies from your browser using an extension like "Get cookies.txt" or "Cookie Quick Manager"
+   - Save the file in Netscape format
+   - Place the cookie file in the `/cookies` directory as `youtube_cookies.txt`
+
+2. **Use cookies in API requests**:
+   ```json
+   {
+     "url": "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
+     "cookies": "/path/to/cookies/youtube_cookies.txt"
+   }
+   ```
+
+3. **Alternative methods**:
+   - You can also use the `cookiesFromBrowser` parameter to extract cookies directly from a browser profile
+   ```json
+   {
+     "url": "https://www.youtube.com/watch?v=YOUR_VIDEO_ID",
+     "cookiesFromBrowser": "firefox"
+   }
+   ```
 
 ### Setup Guide
 

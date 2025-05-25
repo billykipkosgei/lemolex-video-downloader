@@ -12,6 +12,59 @@ const { v4: uuidv4 } = require('uuid');
 const sanitize = require('sanitize-filename');
 const { logInfo, logError, logSuccess, logWarning } = require('./utils');
 
+// Add config loading
+let config = {};
+try {
+  if (fs.existsSync(path.join(__dirname, '../config.json'))) {
+    config = require('../config.json');
+  }
+} catch (error) {
+  console.error('Error loading config:', error);
+}
+
+// Cookie handling functionality
+const processCookies = (cookies, cookiesFromBrowser) => {
+  try {
+    if (cookies) {
+      // If cookies is a string, assume it's a file path or cookie string
+      if (typeof cookies === 'string') {
+        // Check if it's a file path
+        if (fs.existsSync(cookies)) {
+          logInfo(`Using cookies from file: ${cookies}`);
+          return ['--cookies', cookies];
+        } else {
+          // It's a cookie string, write to temp file
+          const cookieFile = path.join(os.tmpdir(), `youtube-cookies-${Date.now()}.txt`);
+          fs.writeFileSync(cookieFile, cookies);
+          logInfo(`Created temporary cookie file: ${cookieFile}`);
+          return ['--cookies', cookieFile];
+        }
+      } 
+      // If cookies is an object, convert to Netscape format
+      else if (typeof cookies === 'object') {
+        const cookieFile = path.join(os.tmpdir(), `youtube-cookies-${Date.now()}.txt`);
+        const cookieContent = Object.entries(cookies)
+          .map(([name, value]) => `youtube.com\tTRUE\t/\tTRUE\t2147483647\t${name}\t${value}`)
+          .join('\n');
+        fs.writeFileSync(cookieFile, cookieContent);
+        logInfo(`Created temporary cookie file from object: ${cookieFile}`);
+        return ['--cookies', cookieFile];
+      }
+    }
+    
+    // Handle browser cookies extraction
+    if (cookiesFromBrowser) {
+      logInfo(`Extracting cookies from browser: ${cookiesFromBrowser}`);
+      return ['--cookies-from-browser', cookiesFromBrowser];
+    }
+    
+    return [];
+  } catch (error) {
+    logError('Cookie processing error:', error);
+    return [];
+  }
+};
+
 // Try to get ffmpeg path
 let ffmpegPath;
 try {
@@ -201,7 +254,10 @@ class DownloadManager {
       url,
       format = 'video+audio',
       quality = 'best',
-      filename = null
+      filename = null,
+      cookies = null,
+      cookiesFromBrowser = null,
+      userAgent = null
     } = options;
 
     if (!url) {
@@ -210,6 +266,18 @@ class DownloadManager {
 
     const downloadId = uuidv4();
     logInfo(`📥 Starting download with fallback strategy: ${downloadId}`);
+    
+    // Process cookies if provided
+    const cookieArgs = processCookies(cookies, cookiesFromBrowser);
+    if (cookieArgs.length > 0) {
+      logInfo(`Using authentication: ${cookieArgs.join(' ')}`);
+    }
+    
+    // Store cookie and user agent info for download strategies
+    this.currentDownloadOptions = {
+      cookieArgs,
+      userAgent
+    };
 
     // If the provided URL doesn't work, try our working URLs
     const urlsToTry = this.isValidYouTubeUrl(url) ? [url, ...this.workingUrls] : this.workingUrls;
@@ -307,6 +375,16 @@ class DownloadManager {
       '-o', outputPath
     ];
 
+    // Add cookie arguments if available
+    if (this.currentDownloadOptions?.cookieArgs?.length > 0) {
+      args.push(...this.currentDownloadOptions.cookieArgs);
+    }
+
+    // Add user agent if provided
+    if (this.currentDownloadOptions?.userAgent) {
+      args.push('--user-agent', this.currentDownloadOptions.userAgent);
+    }
+
     if (format === 'audio-only') {
       args.push('-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3');
     } else {
@@ -329,10 +407,21 @@ class DownloadManager {
       '--socket-timeout', '30',
       '--retries', '3',
       '--extractor-args', 'youtube:player_client=android',
-      '--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
       '--referer', 'https://m.youtube.com/',
       '-o', outputPath
     ];
+
+    // Add cookie arguments if available
+    if (this.currentDownloadOptions?.cookieArgs?.length > 0) {
+      args.push(...this.currentDownloadOptions.cookieArgs);
+    }
+
+    // Use provided user agent or default to mobile user agent
+    if (this.currentDownloadOptions?.userAgent) {
+      args.push('--user-agent', this.currentDownloadOptions.userAgent);
+    } else {
+      args.push('--user-agent', 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip');
+    }
 
     if (format === 'audio-only') {
       args.push('-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3');
@@ -357,6 +446,16 @@ class DownloadManager {
       '--prefer-insecure',
       '-o', outputPath
     ];
+
+    // Add cookie arguments if available
+    if (this.currentDownloadOptions?.cookieArgs?.length > 0) {
+      args.push(...this.currentDownloadOptions.cookieArgs);
+    }
+
+    // Add user agent if provided
+    if (this.currentDownloadOptions?.userAgent) {
+      args.push('--user-agent', this.currentDownloadOptions.userAgent);
+    }
 
     if (format === 'audio-only') {
       args.push('--extract-audio', '--audio-format', 'mp3');
