@@ -392,6 +392,8 @@ class DownloadManager {
 
     if (format === 'audio-only') {
       args.push('-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3');
+    } else if (format === 'video-only') {
+      args.push('-f', 'bestvideo/best[height<=720]');
     } else {
       args.push('-f', 'worst[height<=360]/worst');
     }
@@ -430,6 +432,8 @@ class DownloadManager {
 
     if (format === 'audio-only') {
       args.push('-f', 'bestaudio', '--extract-audio', '--audio-format', 'mp3');
+    } else if (format === 'video-only') {
+      args.push('-f', 'bestvideo/best[height<=720]');
     } else {
       args.push('-f', 'worst[height<=240]/worst');
     }
@@ -464,9 +468,12 @@ class DownloadManager {
 
     if (format === 'audio-only') {
       args.push('--extract-audio', '--audio-format', 'mp3');
+      args.push('-f', 'bestaudio/best');
+    } else if (format === 'video-only') {
+      args.push('-f', 'bestvideo/best[height<=720]');
+    } else {
+      args.push('-f', 'worst/best');
     }
-
-    args.push('-f', 'worst/best');
     args.push(url);
 
     return this.executeDownload(args, outputPath);
